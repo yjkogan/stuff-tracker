@@ -6,10 +6,7 @@ use axum::{
 };
 use sqlx::SqlitePool;
 use uuid::Uuid;
-use crate::{
-    models::{ApiItem, ComparisonRequest, CreateItem, DbItem, UpdateItem, ComparisonPair},
-    ranking::{self, Rating},
-};
+use crate::models::{ApiItem, CreateItem, DbItem, UpdateItem};
 use serde::Deserialize;
 
 #[derive(Deserialize)]
@@ -22,7 +19,7 @@ pub async fn get_items(
     Query(query): Query<ListItemsQuery>,
 ) -> Result<Json<Vec<ApiItem>>, (StatusCode, String)> {
     let mut sql = "SELECT i.id, i.name, i.notes, i.image_url, i.rating, i.created_at, 
-                          i.elo_rating, i.elo_rd, i.elo_vol, i.match_count,
+                          i.rank_order,
                           c.name as category 
                    FROM items i 
                    JOIN categories c ON i.category_id = c.id".to_string();
@@ -34,8 +31,8 @@ pub async fn get_items(
         args.push(cat_name);
     }
 
-    // Sort by score (which correlates with elo_rating) DESC by default
-    sql.push_str(" ORDER BY i.elo_rating DESC");
+    // Sort by rank_order DESC (Higher is better/top)
+    sql.push_str(" ORDER BY i.rank_order DESC");
 
     let mut query_builder = sqlx::query_as::<_, DbItem>(&sql);
     for arg in args {
@@ -57,7 +54,7 @@ pub async fn get_item(
 ) -> Result<Json<ApiItem>, (StatusCode, String)> {
     let item = sqlx::query_as::<_, DbItem>(
         "SELECT i.id, i.name, i.notes, i.image_url, i.rating, i.created_at,
-                i.elo_rating, i.elo_rd, i.elo_vol, i.match_count,
+                i.rank_order,
                 c.name as category 
          FROM items i 
          JOIN categories c ON i.category_id = c.id
@@ -105,7 +102,7 @@ pub async fn create_item(
 
     let item_id = Uuid::new_v4().to_string();
     
-    // Insert with defaults for Elo columns (handled by DB defaults)
+    // Insert with defaults for rank_order
     sqlx::query!(
         "INSERT INTO items (id, category_id, name, notes, image_url, rating) VALUES (?, ?, ?, ?, ?, ?)",
         item_id,
@@ -122,7 +119,7 @@ pub async fn create_item(
     // Fetch back the full item
     let item = sqlx::query_as::<_, DbItem>(
         "SELECT i.id, i.name, i.notes, i.image_url, i.rating, i.created_at,
-                i.elo_rating, i.elo_rd, i.elo_vol, i.match_count,
+                i.rank_order,
                 c.name as category 
          FROM items i 
          JOIN categories c ON i.category_id = c.id
@@ -171,11 +168,14 @@ pub async fn update_item(
     if let Some(val) = payload.rating {
         sqlx::query!("UPDATE items SET rating = ? WHERE id = ?", val, id).execute(&pool).await.ok();
     }
+    if let Some(val) = payload.rank_order {
+        sqlx::query!("UPDATE items SET rank_order = ? WHERE id = ?", val, id).execute(&pool).await.ok();
+    }
 
     // Return updated item
     let item = sqlx::query_as::<_, DbItem>(
         "SELECT i.id, i.name, i.notes, i.image_url, i.rating, i.created_at,
-                i.elo_rating, i.elo_rd, i.elo_vol, i.match_count,
+                i.rank_order,
                 c.name as category 
          FROM items i 
          JOIN categories c ON i.category_id = c.id
@@ -199,99 +199,4 @@ pub async fn get_categories(
 
     let names = categories.into_iter().map(|rec| rec.name).collect();
     Ok(Json(names))
-}
-
-pub async fn get_ranking_pair(
-    State(pool): State<SqlitePool>,
-) -> Result<Json<ComparisonPair>, (StatusCode, String)> {
-    // Pick 2 random items (Naive approach)
-    // Improve later to use active learning
-    let items = sqlx::query_as::<_, DbItem>(
-        "SELECT i.id, i.name, i.notes, i.image_url, i.rating, i.created_at,
-                i.elo_rating, i.elo_rd, i.elo_vol, i.match_count,
-                c.name as category 
-         FROM items i 
-         JOIN categories c ON i.category_id = c.id
-         ORDER BY RANDOM() LIMIT 2"
-    )
-    .fetch_all(&pool)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
-    if items.len() < 2 {
-        return Err((StatusCode::BAD_REQUEST, "Not enough items to compare".to_string()));
-    }
-
-    Ok(Json(ComparisonPair {
-        item1: items[0].clone().into(),
-        item2: items[1].clone().into(),
-    }))
-}
-
-pub async fn submit_vote(
-    State(pool): State<SqlitePool>,
-    Json(payload): Json<ComparisonRequest>,
-) -> Result<impl IntoResponse, (StatusCode, String)> {
-    // 1. Fetch both items
-    let winner = sqlx::query_as::<_, DbItem>("SELECT i.*, c.name as category FROM items i JOIN categories c ON i.category_id = c.id WHERE i.id = ?")
-        .bind(&payload.winner_id)
-        .fetch_optional(&pool)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, "Winner not found".to_string()))?;
-
-    let loser = sqlx::query_as::<_, DbItem>("SELECT i.*, c.name as category FROM items i JOIN categories c ON i.category_id = c.id WHERE i.id = ?")
-        .bind(&payload.loser_id)
-        .fetch_optional(&pool)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, "Loser not found".to_string()))?;
-
-    // 2. Calculate new ratings
-    let w_rating = Rating {
-        rating: winner.elo_rating,
-        rd: winner.elo_rd,
-        vol: winner.elo_vol,
-    };
-    let l_rating = Rating {
-        rating: loser.elo_rating,
-        rd: loser.elo_rd,
-        vol: loser.elo_vol,
-    };
-
-    let (new_w, new_l) = ranking::calculate_glicko_update(w_rating, l_rating);
-
-    // 3. Update DB
-    let mut tx = pool.begin().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
-    // Update Winner
-    sqlx::query!(
-        "UPDATE items SET elo_rating = ?, elo_rd = ?, elo_vol = ?, match_count = match_count + 1 WHERE id = ?",
-        new_w.rating, new_w.rd, new_w.vol, winner.id
-    )
-    .execute(&mut *tx)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
-    // Update Loser
-    sqlx::query!(
-        "UPDATE items SET elo_rating = ?, elo_rd = ?, elo_vol = ?, match_count = match_count + 1 WHERE id = ?",
-        new_l.rating, new_l.rd, new_l.vol, loser.id
-    )
-    .execute(&mut *tx)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
-    // Log comparison
-    sqlx::query!(
-        "INSERT INTO comparisons (winner_id, loser_id) VALUES (?, ?)",
-        winner.id, loser.id
-    )
-    .execute(&mut *tx)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
-    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
-    Ok(StatusCode::OK)
 }

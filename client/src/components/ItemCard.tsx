@@ -4,6 +4,7 @@ import { ThumbsUp, ThumbsDown, Minus, Calendar } from 'lucide-react';
 
 interface ItemCardProps {
     item: Item;
+    onClick?: () => void;
 }
 
 const RatingIcon = ({ rating }: { rating: Rating }) => {
@@ -17,12 +18,9 @@ const RatingIcon = ({ rating }: { rating: Rating }) => {
     }
 };
 
-export default function ItemCard({ item }: ItemCardProps) {
-    return (
-        <Link
-            to={`/item/${item.id}`}
-            className="group flex items-start gap-4 p-4 bg-white border border-gray-100 rounded-2xl shadow-sm hover:shadow-md hover:border-indigo-100 transition-all duration-300 active:scale-[0.99]"
-        >
+export default function ItemCard({ item, onClick }: ItemCardProps) {
+    const CardContent = () => (
+        <>
             {item.imageUrl ? (
                 <img
                     src={item.imageUrl}
@@ -40,7 +38,14 @@ export default function ItemCard({ item }: ItemCardProps) {
                     <h3 className="font-semibold text-gray-900 group-hover:text-indigo-600 transition-colors truncate">
                         {item.name}
                     </h3>
-                    <RatingIcon rating={item.rating} />
+                    <div className="flex items-center gap-1">
+                        {item.rankOrder !== undefined && item.rankOrder !== 0 && (
+                            <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-full">
+                                #{item.rankOrder.toFixed(0)}
+                            </span>
+                        )}
+                        <RatingIcon rating={item.rating} />
+                    </div>
                 </div>
 
                 <p className="mt-1 text-sm text-gray-500 line-clamp-2">
@@ -52,6 +57,22 @@ export default function ItemCard({ item }: ItemCardProps) {
                     <time>{new Date(item.createdAt).toLocaleDateString()}</time>
                 </div>
             </div>
+        </>
+    );
+
+    const className = "group flex items-start gap-4 p-4 bg-white border border-gray-100 rounded-2xl shadow-sm hover:shadow-md hover:border-indigo-100 transition-all duration-300 active:scale-[0.99] w-full text-left";
+
+    if (onClick) {
+        return (
+            <button onClick={onClick} className={className}>
+                <CardContent />
+            </button>
+        );
+    }
+
+    return (
+        <Link to={`/item/${item.id}`} className={className}>
+            <CardContent />
         </Link>
     );
 }

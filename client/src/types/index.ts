@@ -8,6 +8,7 @@ export interface Item {
   imageUrl?: string;
   rating: Rating;
   createdAt: Date;
+  rankOrder?: number;
 }
 
 export type CreateItemDTO = Omit<Item, 'id' | 'createdAt'>;

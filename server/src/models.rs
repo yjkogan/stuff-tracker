@@ -12,10 +12,7 @@ pub struct DbItem {
     pub image_url: Option<String>,
     pub rating: String, // 'good', 'bad', 'meh'
     pub created_at: DateTime<Utc>,
-    pub elo_rating: f64,
-    pub elo_rd: f64,
-    pub elo_vol: f64,
-    pub match_count: i32,
+    pub rank_order: f64,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -27,16 +24,11 @@ pub struct ApiItem {
     pub image_url: Option<String>,
     pub rating: String,
     pub created_at: DateTime<Utc>,
-    pub elo_rating: f64,
-    pub elo_rd: f64,
-    pub elo_vol: f64,
-    pub match_count: i32,
-    pub score: f64,
+    pub rank_order: f64,
 }
 
 impl From<DbItem> for ApiItem {
     fn from(item: DbItem) -> Self {
-        let score = crate::ranking::rating_to_score(item.elo_rating);
         Self {
             id: item.id,
             category: item.category,
@@ -45,11 +37,7 @@ impl From<DbItem> for ApiItem {
             image_url: item.image_url,
             rating: item.rating,
             created_at: item.created_at,
-            elo_rating: item.elo_rating,
-            elo_rd: item.elo_rd,
-            elo_vol: item.elo_vol,
-            match_count: item.match_count,
-            score,
+            rank_order: item.rank_order,
         }
     }
 }
@@ -70,6 +58,7 @@ pub struct UpdateItem {
     pub notes: Option<String>,
     pub image_url: Option<String>,
     pub rating: Option<String>,
+    pub rank_order: Option<f64>,
 }
 
 #[derive(Debug, Serialize, FromRow)]
@@ -79,14 +68,4 @@ pub struct Category {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct ComparisonRequest {
-    pub winner_id: String,
-    pub loser_id: String,
-}
 
-#[derive(Debug, Serialize)]
-pub struct ComparisonPair {
-    pub item1: ApiItem,
-    pub item2: ApiItem,
-}

@@ -9,6 +9,7 @@ interface BackendItem {
     image_url?: string | null;
     rating: string;
     created_at: string;
+    rank_order: number;
 }
 
 function transformItem(item: BackendItem): Item {
@@ -19,7 +20,8 @@ function transformItem(item: BackendItem): Item {
         notes: item.notes ?? undefined,
         imageUrl: item.image_url ?? undefined, // Map snake_case to camelCase
         rating: item.rating as any, // Cast to Rating (we trust the backend)
-        createdAt: new Date(item.created_at)
+        createdAt: new Date(item.created_at),
+        rankOrder: item.rank_order
     };
 }
 
@@ -89,5 +91,14 @@ export const api = {
         const res = await fetch('/api/categories');
         if (!res.ok) throw new Error('Failed to fetch categories');
         return await res.json();
+    },
+
+    updateItemRank: async (id: string, rankOrder: number): Promise<void> => {
+        const res = await fetch(`/api/items/${id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ rank_order: rankOrder })
+        });
+        if (!res.ok) throw new Error('Failed to update item rank');
     }
 };

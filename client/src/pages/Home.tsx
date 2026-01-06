@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { api } from '../api/mockClient';
+import { api } from '../api/client';
 import CategoryCard from '../components/CategoryCard';
 import { Loader2 } from 'lucide-react';
 

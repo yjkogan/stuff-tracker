@@ -1,0 +1,13 @@
+# Rust
+/target
+/target/
+**/*.rs.bk
+
+# Database
+data.db
+data.db-shm
+data.db-wal
+
+# Environment
+.env
+.env.local

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { api } from '../api/mockClient';
+import { api } from '../api/client';
 import { Rating } from '../types';
 import { ThumbsUp, ThumbsDown, Minus, Loader2, Save, Image as ImageIcon } from 'lucide-react';
 import RatingButton from '../components/RatingButton';

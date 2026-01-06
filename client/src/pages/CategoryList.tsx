@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { api } from '../api/mockClient';
+import { api } from '../api/client';
 import { Item } from '../types';
 import ItemCard from '../components/ItemCard';
 import { Loader2, PackageOpen } from 'lucide-react';

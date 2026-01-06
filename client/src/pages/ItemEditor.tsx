@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api/mockClient';
 import { Rating } from '../types';
 import { ThumbsUp, ThumbsDown, Minus, Loader2, Save, Image as ImageIcon } from 'lucide-react';
+import RatingButton from '../components/RatingButton';
 
 export default function ItemEditor() {
     const { id } = useParams();
@@ -60,27 +61,7 @@ export default function ItemEditor() {
         }
     };
 
-    const RatingButton = ({ value, icon: Icon, label }: { value: Rating, icon: any, label: string }) => {
-        const isSelected = formData.rating === value;
-        let activeClass = '';
-        if (value === 'good') activeClass = 'bg-green-100 text-green-700 border-green-200 ring-2 ring-green-500 ring-offset-2';
-        if (value === 'bad') activeClass = 'bg-red-100 text-red-700 border-red-200 ring-2 ring-red-500 ring-offset-2';
-        if (value === 'meh') activeClass = 'bg-yellow-100 text-yellow-700 border-yellow-200 ring-2 ring-yellow-500 ring-offset-2';
 
-        return (
-            <button
-                type="button"
-                onClick={() => setFormData({ ...formData, rating: value })}
-                className={`flex-1 py-3 rounded-xl border flex flex-col items-center gap-1 transition-all duration-200 ${isSelected
-                        ? activeClass
-                        : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'
-                    }`}
-            >
-                <Icon className={`w-6 h-6 ${isSelected ? 'scale-110' : ''}`} />
-                <span className="text-xs font-medium">{label}</span>
-            </button>
-        );
-    };
 
     if (loading) return <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-indigo-600" /></div>;
 
@@ -129,9 +110,9 @@ export default function ItemEditor() {
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">Rating</label>
                         <div className="flex gap-3">
-                            <RatingButton value="good" icon={ThumbsUp} label="Good" />
-                            <RatingButton value="meh" icon={Minus} label="Meh" />
-                            <RatingButton value="bad" icon={ThumbsDown} label="Bad" />
+                            <RatingButton value="good" icon={ThumbsUp} label="Good" currentRating={formData.rating} onClick={(v) => setFormData({ ...formData, rating: v })} />
+                            <RatingButton value="meh" icon={Minus} label="Meh" currentRating={formData.rating} onClick={(v) => setFormData({ ...formData, rating: v })} />
+                            <RatingButton value="bad" icon={ThumbsDown} label="Bad" currentRating={formData.rating} onClick={(v) => setFormData({ ...formData, rating: v })} />
                         </div>
                     </div>
 

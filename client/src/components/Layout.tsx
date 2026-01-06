@@ -6,11 +6,7 @@ export default function Layout() {
     const location = useLocation();
     const navigate = useNavigate();
     const isHome = location.pathname === '/';
-    const isLogin = location.pathname === '/login';
 
-    if (isLogin) {
-        return <Outlet />;
-    }
 
     return (
         <div className="min-h-screen bg-gray-50 text-gray-900 pb-24">

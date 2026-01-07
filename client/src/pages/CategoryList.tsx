@@ -25,6 +25,8 @@ export default function CategoryList() {
         load();
     }, [category]);
 
+
+
     if (loading) {
         // TODO: Use shared spinner component
         return (
@@ -49,7 +51,11 @@ export default function CategoryList() {
             ) : (
                 <div className="grid grid-cols-1 gap-4">
                     {items.map((item, index) => (
-                        <ItemCard key={item.id} item={item} rank={index + 1} />
+                        <ItemCard
+                            key={item.id}
+                            item={item}
+                            rank={index + 1}
+                        />
                     ))}
                 </div>
             )}

@@ -21,9 +21,10 @@ export default function RankingFlow({ targetItem, onComplete, onCancel }: Rankin
             setLoading(true);
             try {
                 const itemsInCategory = await api.getItemsByCategory(targetItem.category);
-                // Exclude target and sort by rank order (DESC)
-                const others = itemsInCategory.filter(i => i.id !== targetItem.id)
-                    .sort((a, b) => (b.rankOrder || 0) - (a.rankOrder || 0));
+                // Exclude target and unranked items, then sort by rank order (DESC)
+                const others = itemsInCategory
+                    .filter(i => i.id !== targetItem.id && i.rankOrder !== undefined && i.rankOrder !== null)
+                    .sort((a, b) => (b.rankOrder!) - (a.rankOrder!));
 
                 setSortedItems(others);
 

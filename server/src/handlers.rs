@@ -1,4 +1,5 @@
 use crate::models::{ApiItem, CreateItem, DbItem, UpdateItem};
+use crate::upload::delete_image;
 use axum::{
     Json,
     extract::{Path, Query, State},
@@ -103,25 +104,8 @@ pub async fn create_item(
 
     let item_id = Uuid::new_v4().to_string();
 
-    // Insert with defaults for rank_order
-    // Find the current lowest rank in this category to append to bottom
-    let min_rank = sqlx::query!(
-        "SELECT MIN(rank_order) as min_rank FROM items WHERE category_id = ?",
-        category_id
-    )
-    .fetch_one(&pool)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-    .min_rank
-    .unwrap_or(0.0);
-
-    // Default to bottom: min_rank - 100.0
-    // If list is empty (min_rank is 0.0), start at 0.0 (or whatever baseline)
-    let initial_rank = if min_rank == 0.0 {
-        0.0
-    } else {
-        min_rank - 100.0
-    };
+    // Insert with None for rank_order (unranked)
+    let rank_order: Option<f64> = None;
 
     sqlx::query!(
         "INSERT INTO items (id, category_id, name, notes, image_url, rank_order) VALUES (?, ?, ?, ?, ?, ?)",
@@ -130,7 +114,7 @@ pub async fn create_item(
         payload.name,
         payload.notes,
         payload.image_url,
-        initial_rank
+        rank_order
     )
     .execute(&pool)
     .await
@@ -159,7 +143,8 @@ pub async fn update_item(
     Json(payload): Json<UpdateItem>,
 ) -> Result<Json<ApiItem>, (StatusCode, String)> {
     // Check if item exists first
-    let _exists = sqlx::query!("SELECT id FROM items WHERE id = ?", id)
+    // Check if item exists and get current image_url
+    let existing_item = sqlx::query!("SELECT id, image_url FROM items WHERE id = ?", id)
         .fetch_optional(&pool)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
@@ -193,6 +178,13 @@ pub async fn update_item(
             .ok();
     }
     if let Some(val) = payload.image_url {
+        // If there was an old image and it's different from the new one, delete the old one
+        if let Some(old_url) = existing_item.image_url {
+            if old_url != val {
+                let _ = delete_image(&old_url).await;
+            }
+        }
+
         sqlx::query!("UPDATE items SET image_url = ? WHERE id = ?", val, id)
             .execute(&pool)
             .await
@@ -220,6 +212,31 @@ pub async fn update_item(
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     Ok(Json(item.into()))
+}
+
+pub async fn delete_item(
+    State(pool): State<SqlitePool>,
+    Path(id): Path<String>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    // Get item first to find image_url
+    let item = sqlx::query!("SELECT image_url FROM items WHERE id = ?", id)
+        .fetch_optional(&pool)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or((StatusCode::NOT_FOUND, "Item not found".to_string()))?;
+
+    // Delete image if exists
+    if let Some(url) = item.image_url {
+        let _ = delete_image(&url).await;
+    }
+
+    // Delete item from DB
+    sqlx::query!("DELETE FROM items WHERE id = ?", id)
+        .execute(&pool)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn get_categories(

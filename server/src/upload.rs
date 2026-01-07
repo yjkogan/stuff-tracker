@@ -37,3 +37,25 @@ pub async fn upload_image(
     
     Err((StatusCode::BAD_REQUEST, "No image field found".to_string()))
 }
+
+pub async fn delete_image(url: &str) -> std::io::Result<()> {
+    // URL format: /uploads/UUID.ext
+    let filename = match url.strip_prefix("/uploads/") {
+        Some(f) => f,
+        None => return Ok(()), // Not a local upload path, ignore
+    };
+
+    // Basic sanity check on filename to prevent obvious directory traversal
+    if filename.contains("..") || filename.contains('/') || filename.contains('\\') {
+        return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "Invalid filename"));
+    }
+
+    let filepath = Path::new("uploads").join(filename);
+
+    // Verify existence to avoid errors on already deleted files
+    if filepath.exists() {
+        fs::remove_file(filepath).await?;
+    }
+
+    Ok(())
+}

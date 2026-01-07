@@ -113,5 +113,12 @@ export const api = {
         if (!res.ok) throw new Error('Failed to upload image');
         const data: { url: string } = await res.json();
         return data.url;
+    },
+
+    deleteItem: async (id: string): Promise<void> => {
+        const res = await fetch(`/api/items/${id}`, {
+            method: 'DELETE',
+        });
+        if (!res.ok) throw new Error('Failed to delete item');
     }
 };

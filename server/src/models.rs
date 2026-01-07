@@ -10,7 +10,7 @@ pub struct DbItem {
     pub notes: Option<String>,
     pub image_url: Option<String>,
     pub created_at: DateTime<Utc>,
-    pub rank_order: f64,
+    pub rank_order: Option<f64>,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -21,8 +21,8 @@ pub struct ApiItem {
     pub notes: Option<String>,
     pub image_url: Option<String>,
     pub created_at: DateTime<Utc>,
-    pub rank_order: f64,
-    pub normalized_score: f64,
+    pub rank_order: Option<f64>,
+    pub normalized_score: Option<f64>,
 }
 
 impl From<DbItem> for ApiItem {
@@ -32,7 +32,11 @@ impl From<DbItem> for ApiItem {
         // rank_order 300 -> ~73
         // rank_order -300 -> ~26
         // Scale factor 300.0 chosen to give reasonable spread
-        let score = 100.0 / (1.0 + (-item.rank_order / 300.0).exp());
+        let score = if let Some(rank) = item.rank_order {
+            Some(100.0 / (1.0 + (-rank / 300.0).exp()))
+        } else {
+            None
+        };
 
         Self {
             id: item.id,

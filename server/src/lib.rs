@@ -15,7 +15,7 @@ pub fn create_router(pool: SqlitePool) -> Router {
         )
         .route(
             "/api/items/{id}",
-            get(handlers::get_item).patch(handlers::update_item),
+            get(handlers::get_item).patch(handlers::update_item).delete(handlers::delete_item),
         )
         .route("/api/categories", get(handlers::get_categories))
         .route("/api/upload", post(upload::upload_image))

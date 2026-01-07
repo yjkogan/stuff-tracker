@@ -35,7 +35,9 @@ export default function ItemCard({ item, onClick, rank }: ItemCardProps) {
                             </span>
                         )}
                         <span className="text-xs font-medium text-gray-400 bg-gray-50 px-2 py-1 rounded-full" title="Normalized Score (0-10)">
-                            Score: {(item.normalizedScore ? item.normalizedScore / 10 : undefined)?.toFixed(1) ?? '?'}
+                            {item.normalizedScore !== undefined && item.normalizedScore !== null
+                                ? `Score: ${(item.normalizedScore / 10).toFixed(1)}`
+                                : 'Not rated'}
                         </span>
                     </div>
                 </div>

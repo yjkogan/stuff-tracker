@@ -1,18 +1,14 @@
-use axum::{
-    routing::{get, post, patch},
-    Router,
-};
+use server::create_router;
 use sqlx::sqlite::SqlitePoolOptions;
 use std::net::SocketAddr;
 use std::path::Path;
 use tokio::fs;
-use server::create_router;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Load .env if it exists
     dotenvy::dotenv().ok();
-    
+
     tracing_subscriber::fmt::init();
 
     let db_url = std::env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite:data.db".to_string());
@@ -48,9 +44,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
     println!("listening on {}", addr);
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
-    axum::serve(listener, app)
-        .await
-        .unwrap();
+    axum::serve(listener, app).await.unwrap();
 
     Ok(())
 }

@@ -1,5 +1,5 @@
 import { Outlet, useLocation, Link, useNavigate } from 'react-router-dom';
-import { LogOut, Home, ArrowLeft } from 'lucide-react';
+import { LogOut, ArrowLeft } from 'lucide-react';
 import FloatingActionButton from './FloatingActionButton';
 
 export default function Layout() {
@@ -26,9 +26,7 @@ export default function Layout() {
                         <Link to="/" className="font-bold text-xl tracking-tight bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent hover:opacity-80 transition-opacity">
                             Stuff Tracker
                         </Link>
-                        <Link to="/rank" className="ml-4 text-sm font-medium text-gray-500 hover:text-indigo-600 transition-colors">
-                            Rank Mode
-                        </Link>
+
                     </div>
 
                     <button

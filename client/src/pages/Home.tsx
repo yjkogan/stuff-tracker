@@ -20,6 +20,7 @@ export default function Home() {
     }, []);
 
     if (loading) {
+        // TODO: Extract into a Spinner component
         return (
             <div className="flex justify-center py-20">
                 <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />

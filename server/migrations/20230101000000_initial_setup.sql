@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS items (
     name TEXT NOT NULL,
     notes TEXT,
     image_url TEXT,
-    rating TEXT NOT NULL, -- 'good', 'bad', 'meh'
+    -- rating removed
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     
     -- Ranking field (Binary Search Order)

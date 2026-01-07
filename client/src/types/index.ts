@@ -1,4 +1,3 @@
-export type Rating = 'good' | 'bad' | 'meh';
 
 export interface Item {
   id: string;
@@ -6,9 +5,9 @@ export interface Item {
   name: string;
   notes?: string;
   imageUrl?: string;
-  rating: Rating;
   createdAt: Date;
   rankOrder?: number;
+  normalizedScore?: number;
 }
 
 export type CreateItemDTO = Omit<Item, 'id' | 'createdAt'>;

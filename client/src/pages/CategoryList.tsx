@@ -26,6 +26,7 @@ export default function CategoryList() {
     }, [category]);
 
     if (loading) {
+        // TODO: Use shared spinner component
         return (
             <div className="flex justify-center py-20">
                 <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />
@@ -47,8 +48,8 @@ export default function CategoryList() {
                 </div>
             ) : (
                 <div className="grid grid-cols-1 gap-4">
-                    {items.map((item) => (
-                        <ItemCard key={item.id} item={item} />
+                    {items.map((item, index) => (
+                        <ItemCard key={item.id} item={item} rank={index + 1} />
                     ))}
                 </div>
             )}

@@ -7,9 +7,9 @@ interface BackendItem {
     name: string;
     notes?: string | null;
     image_url?: string | null;
-    rating: string;
     created_at: string;
     rank_order: number;
+    normalized_score: number;
 }
 
 function transformItem(item: BackendItem): Item {
@@ -19,9 +19,9 @@ function transformItem(item: BackendItem): Item {
         name: item.name,
         notes: item.notes ?? undefined,
         imageUrl: item.image_url ?? undefined, // Map snake_case to camelCase
-        rating: item.rating as any, // Cast to Rating (we trust the backend)
         createdAt: new Date(item.created_at),
-        rankOrder: item.rank_order
+        rankOrder: item.rank_order,
+        normalizedScore: item.normalized_score
     };
 }
 
@@ -54,7 +54,6 @@ export const api = {
             name: data.name,
             notes: data.notes,
             image_url: data.imageUrl,
-            rating: data.rating
         };
         const res = await fetch('/api/items', {
             method: 'POST',

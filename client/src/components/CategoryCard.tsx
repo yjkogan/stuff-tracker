@@ -3,10 +3,9 @@ import { Folder, ChevronRight } from 'lucide-react';
 
 interface CategoryCardProps {
     name: string;
-    count?: number;
 }
 
-export default function CategoryCard({ name, count }: CategoryCardProps) {
+export default function CategoryCard({ name }: CategoryCardProps) {
     return (
         <Link
             to={`/category/${encodeURIComponent(name)}`}
@@ -19,9 +18,6 @@ export default function CategoryCard({ name, count }: CategoryCardProps) {
                     </div>
                     <div>
                         <h3 className="font-semibold text-gray-900 group-hover:text-indigo-700 transition-colors">{name}</h3>
-                        {count !== undefined && (
-                            <p className="text-sm text-gray-500 font-medium">{count} items</p>
-                        )}
                     </div>
                 </div>
 

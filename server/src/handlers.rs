@@ -1,13 +1,12 @@
+use crate::models::{ApiItem, CreateItem, DbItem, UpdateItem};
 use axum::{
+    Json,
     extract::{Path, Query, State},
     http::StatusCode,
-    Json,
-    response::IntoResponse,
 };
+use serde::Deserialize;
 use sqlx::SqlitePool;
 use uuid::Uuid;
-use crate::models::{ApiItem, CreateItem, DbItem, UpdateItem};
-use serde::Deserialize;
 
 #[derive(Deserialize)]
 pub struct ListItemsQuery {
@@ -18,12 +17,13 @@ pub async fn get_items(
     State(pool): State<SqlitePool>,
     Query(query): Query<ListItemsQuery>,
 ) -> Result<Json<Vec<ApiItem>>, (StatusCode, String)> {
-    let mut sql = "SELECT i.id, i.name, i.notes, i.image_url, i.rating, i.created_at, 
+    let mut sql = "SELECT i.id, i.name, i.notes, i.image_url, i.created_at, 
                           i.rank_order,
                           c.name as category 
                    FROM items i 
-                   JOIN categories c ON i.category_id = c.id".to_string();
-    
+                   JOIN categories c ON i.category_id = c.id"
+        .to_string();
+
     let mut args = Vec::new();
 
     if let Some(cat_name) = query.category {
@@ -39,9 +39,10 @@ pub async fn get_items(
         query_builder = query_builder.bind(arg);
     }
 
-    let items = query_builder.fetch_all(&pool).await.map_err(|e| {
-        (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
-    })?;
+    let items = query_builder
+        .fetch_all(&pool)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     let api_items: Vec<ApiItem> = items.into_iter().map(Into::into).collect();
 
@@ -53,12 +54,12 @@ pub async fn get_item(
     Path(id): Path<String>,
 ) -> Result<Json<ApiItem>, (StatusCode, String)> {
     let item = sqlx::query_as::<_, DbItem>(
-        "SELECT i.id, i.name, i.notes, i.image_url, i.rating, i.created_at,
+        "SELECT i.id, i.name, i.notes, i.image_url, i.created_at,
                 i.rank_order,
                 c.name as category 
          FROM items i 
          JOIN categories c ON i.category_id = c.id
-         WHERE i.id = ?"
+         WHERE i.id = ?",
     )
     .bind(id)
     .fetch_optional(&pool)
@@ -101,16 +102,35 @@ pub async fn create_item(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     let item_id = Uuid::new_v4().to_string();
-    
+
     // Insert with defaults for rank_order
+    // Find the current lowest rank in this category to append to bottom
+    let min_rank = sqlx::query!(
+        "SELECT MIN(rank_order) as min_rank FROM items WHERE category_id = ?",
+        category_id
+    )
+    .fetch_one(&pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+    .min_rank
+    .unwrap_or(0.0);
+
+    // Default to bottom: min_rank - 100.0
+    // If list is empty (min_rank is 0.0), start at 0.0 (or whatever baseline)
+    let initial_rank = if min_rank == 0.0 {
+        0.0
+    } else {
+        min_rank - 100.0
+    };
+
     sqlx::query!(
-        "INSERT INTO items (id, category_id, name, notes, image_url, rating) VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT INTO items (id, category_id, name, notes, image_url, rank_order) VALUES (?, ?, ?, ?, ?, ?)",
         item_id,
         category_id,
         payload.name,
         payload.notes,
         payload.image_url,
-        payload.rating
+        initial_rank
     )
     .execute(&pool)
     .await
@@ -118,12 +138,12 @@ pub async fn create_item(
 
     // Fetch back the full item
     let item = sqlx::query_as::<_, DbItem>(
-        "SELECT i.id, i.name, i.notes, i.image_url, i.rating, i.created_at,
+        "SELECT i.id, i.name, i.notes, i.image_url, i.created_at,
                 i.rank_order,
                 c.name as category 
          FROM items i 
          JOIN categories c ON i.category_id = c.id
-         WHERE i.id = ?"
+         WHERE i.id = ?",
     )
     .bind(&item_id)
     .fetch_one(&pool)
@@ -149,37 +169,50 @@ pub async fn update_item(
         let category_id = get_or_create_category_id(&pool, cat_name)
             .await
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-        
-        sqlx::query!("UPDATE items SET category_id = ? WHERE id = ?", category_id, id)
-            .execute(&pool)
-            .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+        sqlx::query!(
+            "UPDATE items SET category_id = ? WHERE id = ?",
+            category_id,
+            id
+        )
+        .execute(&pool)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     }
 
     if let Some(val) = payload.name {
-        sqlx::query!("UPDATE items SET name = ? WHERE id = ?", val, id).execute(&pool).await.ok();
+        sqlx::query!("UPDATE items SET name = ? WHERE id = ?", val, id)
+            .execute(&pool)
+            .await
+            .ok();
     }
     if let Some(val) = payload.notes {
-        sqlx::query!("UPDATE items SET notes = ? WHERE id = ?", val, id).execute(&pool).await.ok();
+        sqlx::query!("UPDATE items SET notes = ? WHERE id = ?", val, id)
+            .execute(&pool)
+            .await
+            .ok();
     }
     if let Some(val) = payload.image_url {
-        sqlx::query!("UPDATE items SET image_url = ? WHERE id = ?", val, id).execute(&pool).await.ok();
-    }
-    if let Some(val) = payload.rating {
-        sqlx::query!("UPDATE items SET rating = ? WHERE id = ?", val, id).execute(&pool).await.ok();
+        sqlx::query!("UPDATE items SET image_url = ? WHERE id = ?", val, id)
+            .execute(&pool)
+            .await
+            .ok();
     }
     if let Some(val) = payload.rank_order {
-        sqlx::query!("UPDATE items SET rank_order = ? WHERE id = ?", val, id).execute(&pool).await.ok();
+        sqlx::query!("UPDATE items SET rank_order = ? WHERE id = ?", val, id)
+            .execute(&pool)
+            .await
+            .ok();
     }
 
     // Return updated item
     let item = sqlx::query_as::<_, DbItem>(
-        "SELECT i.id, i.name, i.notes, i.image_url, i.rating, i.created_at,
+        "SELECT i.id, i.name, i.notes, i.image_url, i.created_at,
                 i.rank_order,
                 c.name as category 
          FROM items i 
          JOIN categories c ON i.category_id = c.id
-         WHERE i.id = ?"
+         WHERE i.id = ?",
     )
     .bind(&id)
     .fetch_one(&pool)

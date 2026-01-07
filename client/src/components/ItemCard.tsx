@@ -1,24 +1,14 @@
 import { Link } from 'react-router-dom';
-import { Rating, Item } from '../types';
-import { ThumbsUp, ThumbsDown, Minus, Calendar } from 'lucide-react';
+import { Item } from '../types';
+import { Calendar } from 'lucide-react';
 
 interface ItemCardProps {
     item: Item;
     onClick?: () => void;
+    rank?: number;
 }
 
-const RatingIcon = ({ rating }: { rating: Rating }) => {
-    switch (rating) {
-        case 'good':
-            return <div className="p-1.5 rounded-full bg-green-100 text-green-600"><ThumbsUp className="w-4 h-4" /></div>;
-        case 'bad':
-            return <div className="p-1.5 rounded-full bg-red-100 text-red-600"><ThumbsDown className="w-4 h-4" /></div>;
-        case 'meh':
-            return <div className="p-1.5 rounded-full bg-yellow-100 text-yellow-600"><Minus className="w-4 h-4" /></div>;
-    }
-};
-
-export default function ItemCard({ item, onClick }: ItemCardProps) {
+export default function ItemCard({ item, onClick, rank }: ItemCardProps) {
     const CardContent = () => (
         <>
             {item.imageUrl ? (
@@ -39,12 +29,14 @@ export default function ItemCard({ item, onClick }: ItemCardProps) {
                         {item.name}
                     </h3>
                     <div className="flex items-center gap-1">
-                        {item.rankOrder !== undefined && item.rankOrder !== 0 && (
+                        {rank && (
                             <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-full">
-                                #{item.rankOrder.toFixed(0)}
+                                #{rank}
                             </span>
                         )}
-                        <RatingIcon rating={item.rating} />
+                        <span className="text-xs font-medium text-gray-400 bg-gray-50 px-2 py-1 rounded-full" title="Normalized Score (0-10)">
+                            {(item.normalizedScore ? item.normalizedScore / 10 : undefined)?.toFixed(1) ?? '?'}
+                        </span>
                     </div>
                 </div>
 

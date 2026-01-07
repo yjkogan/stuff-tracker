@@ -1,7 +1,6 @@
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
-use chrono::{DateTime, Utc};
-use uuid::Uuid;
 
 #[derive(Debug, FromRow, Clone)]
 pub struct DbItem {
@@ -10,7 +9,6 @@ pub struct DbItem {
     pub name: String,
     pub notes: Option<String>,
     pub image_url: Option<String>,
-    pub rating: String, // 'good', 'bad', 'meh'
     pub created_at: DateTime<Utc>,
     pub rank_order: f64,
 }
@@ -22,22 +20,29 @@ pub struct ApiItem {
     pub name: String,
     pub notes: Option<String>,
     pub image_url: Option<String>,
-    pub rating: String,
     pub created_at: DateTime<Utc>,
     pub rank_order: f64,
+    pub normalized_score: f64,
 }
 
 impl From<DbItem> for ApiItem {
     fn from(item: DbItem) -> Self {
+        // Sigmoid mapping: 0-100 based on rank_order
+        // rank_order 0 -> ~50
+        // rank_order 300 -> ~73
+        // rank_order -300 -> ~26
+        // Scale factor 300.0 chosen to give reasonable spread
+        let score = 100.0 / (1.0 + (-item.rank_order / 300.0).exp());
+
         Self {
             id: item.id,
             category: item.category,
             name: item.name,
             notes: item.notes,
             image_url: item.image_url,
-            rating: item.rating,
             created_at: item.created_at,
             rank_order: item.rank_order,
+            normalized_score: score,
         }
     }
 }
@@ -48,7 +53,6 @@ pub struct CreateItem {
     pub name: String,
     pub notes: Option<String>,
     pub image_url: Option<String>,
-    pub rating: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -57,7 +61,6 @@ pub struct UpdateItem {
     pub name: Option<String>,
     pub notes: Option<String>,
     pub image_url: Option<String>,
-    pub rating: Option<String>,
     pub rank_order: Option<f64>,
 }
 
@@ -67,5 +70,3 @@ pub struct Category {
     pub name: String,
     pub created_at: DateTime<Utc>,
 }
-
-

@@ -110,7 +110,7 @@ export default function RankingFlow({ targetItem, onComplete, onCancel }: Rankin
         <div
             onClick={onClick}
             className={`
-                group relative w-full w-72 aspect-[3/4] rounded-3xl overflow-hidden cursor-pointer 
+                group relative w-72 aspect-[3/4] rounded-3xl overflow-hidden cursor-pointer 
                 transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]
                 ${isTarget
                     ? 'ring-4 ring-indigo-500 shadow-2xl shadow-indigo-500/30'
@@ -121,7 +121,7 @@ export default function RankingFlow({ targetItem, onComplete, onCancel }: Rankin
             {/* Background Image or Placeholder */}
             <div className="absolute inset-0 bg-gray-800">
                 {item.imageUrl ? (
-                    <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity duration-300" />
+                    <img src={item.imageUrl} alt={item.name} className="w-full h-full object-scale-down group-hover:opacity-100 transition-opacity duration-300" />
                 ) : (
                     <div className="w-full h-full flex flex-col items-center justify-center text-white/10 group-hover:text-white/20 transition-colors">
                         <svg className="w-20 h-20" fill="none" viewBox="0 0 24 24" stroke="currentColor">

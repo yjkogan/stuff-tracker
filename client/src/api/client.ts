@@ -99,5 +99,19 @@ export const api = {
             body: JSON.stringify({ rank_order: rankOrder })
         });
         if (!res.ok) throw new Error('Failed to update item rank');
+    },
+
+    uploadImage: async (file: File): Promise<string> => {
+        const formData = new FormData();
+        formData.append('image', file);
+
+        const res = await fetch('/api/upload', {
+            method: 'POST',
+            body: formData,
+        });
+
+        if (!res.ok) throw new Error('Failed to upload image');
+        const data: { url: string } = await res.json();
+        return data.url;
     }
 };

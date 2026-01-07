@@ -4,6 +4,7 @@ import { api } from '../api/client';
 import { Item } from '../types';
 import { Loader2, Save, Trophy } from 'lucide-react';
 import RankingFlow from '../components/RankingFlow';
+import { ImageUpload } from '../components/ImageUpload';
 
 export default function ItemEditor() {
     const { id } = useParams();
@@ -24,6 +25,9 @@ export default function ItemEditor() {
         notes: '',
         imageUrl: '',
     });
+
+    // File state for Upload-on-Save
+    const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
     useEffect(() => {
         async function init() {
@@ -52,12 +56,21 @@ export default function ItemEditor() {
         e.preventDefault();
         setSaving(true);
         try {
+            let finalImageUrl = formData.imageUrl;
+
+            // Upload image if a new file is selected
+            if (selectedFile) {
+                finalImageUrl = await api.uploadImage(selectedFile);
+            }
+
+            const payload = { ...formData, imageUrl: finalImageUrl };
+
             if (isNew) {
-                const newItem = await api.createItem(formData);
+                const newItem = await api.createItem(payload);
                 // Instead of navigating back, start ranking flow
                 setRankingItem(newItem);
             } else if (id) {
-                await api.updateItem(id, formData);
+                await api.updateItem(id, payload);
                 navigate(`/category/${encodeURIComponent(formData.category)}`);
             }
         } catch (err) {
@@ -87,11 +100,13 @@ export default function ItemEditor() {
             <h2 className="text-2xl font-bold text-gray-900">{isNew ? 'New Entry' : 'Edit Entry'}</h2>
 
             <form onSubmit={handleSubmit} className="space-y-6">
-                {/* Image Upload Placeholder */}
-                {/* <div className="w-full aspect-video rounded-3xl bg-gray-100 border-2 border-dashed border-gray-300 flex flex-col items-center justify-center text-gray-400 hover:bg-gray-50 hover:border-indigo-300 transition-colors cursor-pointer group">
-                    <ImageIcon className="w-8 h-8 mb-2 group-hover:text-indigo-500" />
-                    <span className="text-sm font-medium">Add Photo</span>
-                </div> */}
+
+                <ImageUpload
+                    value={selectedFile}
+                    onChange={setSelectedFile}
+                    currentImageUrl={formData.imageUrl}
+                    onClear={() => setFormData({ ...formData, imageUrl: '' })}
+                />
 
                 <div className="space-y-4">
                     <div>

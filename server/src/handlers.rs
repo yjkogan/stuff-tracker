@@ -1,8 +1,8 @@
-use crate::models::{ApiItem, CreateItem, DbItem, UpdateItem};
+use crate::models::{ApiItem, CreateItem, DbItem, UpdateItem, Claims};
 use crate::upload::delete_image;
 use axum::{
     Json,
-    extract::{Path, Query, State},
+    extract::{Path, Query, State, Extension},
     http::StatusCode,
 };
 use serde::Deserialize;
@@ -16,28 +16,30 @@ pub struct ListItemsQuery {
 
 pub async fn get_items(
     State(pool): State<SqlitePool>,
+    Extension(claims): Extension<Claims>,
     Query(query): Query<ListItemsQuery>,
 ) -> Result<Json<Vec<ApiItem>>, (StatusCode, String)> {
+
     let mut sql = "SELECT i.id, i.name, i.notes, i.image_url, i.created_at, 
                           i.rank_order,
                           c.name as category 
                    FROM items i 
-                   JOIN categories c ON i.category_id = c.id"
-        .to_string();
-
-    let mut args = Vec::new();
-
-    if let Some(cat_name) = query.category {
-        sql.push_str(" WHERE c.name = ?");
-        args.push(cat_name);
+                   JOIN categories c ON i.category_id = c.id
+                   WHERE i.user_id = ?".to_string();
+    
+    // We will bind 'claims.uid' first.
+    
+    if let Some(_cat_name) = &query.category {
+        sql.push_str(" AND c.name = ?");
     }
 
-    // Sort by rank_order DESC (Higher is better/top)
     sql.push_str(" ORDER BY i.rank_order DESC");
 
     let mut query_builder = sqlx::query_as::<_, DbItem>(&sql);
-    for arg in args {
-        query_builder = query_builder.bind(arg);
+    query_builder = query_builder.bind(claims.uid);
+    
+    if let Some(cat_name) = query.category {
+        query_builder = query_builder.bind(cat_name);
     }
 
     let items = query_builder
@@ -52,6 +54,7 @@ pub async fn get_items(
 
 pub async fn get_item(
     State(pool): State<SqlitePool>,
+    Extension(claims): Extension<Claims>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiItem>, (StatusCode, String)> {
     let item = sqlx::query_as::<_, DbItem>(
@@ -60,9 +63,10 @@ pub async fn get_item(
                 c.name as category 
          FROM items i 
          JOIN categories c ON i.category_id = c.id
-         WHERE i.id = ?",
+         WHERE i.id = ? AND i.user_id = ?",
     )
     .bind(id)
+    .bind(claims.uid)
     .fetch_optional(&pool)
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
@@ -71,9 +75,9 @@ pub async fn get_item(
     Ok(Json(item.into()))
 }
 
-async fn get_or_create_category_id(pool: &SqlitePool, name: &str) -> Result<String, sqlx::Error> {
-    // Try to find existing
-    let rec = sqlx::query!("SELECT id FROM categories WHERE name = ?", name)
+async fn get_or_create_category_id(pool: &SqlitePool, name: &str, user_id: i64) -> Result<String, sqlx::Error> {
+    // Try to find existing for THIS user
+    let rec = sqlx::query!("SELECT id FROM categories WHERE name = ? AND user_id = ?", name, user_id)
         .fetch_optional(pool)
         .await?;
 
@@ -84,9 +88,10 @@ async fn get_or_create_category_id(pool: &SqlitePool, name: &str) -> Result<Stri
     // Create new
     let new_id = Uuid::new_v4().to_string();
     sqlx::query!(
-        "INSERT INTO categories (id, name) VALUES (?, ?)",
+        "INSERT INTO categories (id, name, user_id) VALUES (?, ?, ?)",
         new_id,
-        name
+        name,
+        user_id
     )
     .execute(pool)
     .await?;
@@ -96,9 +101,10 @@ async fn get_or_create_category_id(pool: &SqlitePool, name: &str) -> Result<Stri
 
 pub async fn create_item(
     State(pool): State<SqlitePool>,
+    Extension(claims): Extension<Claims>,
     Json(payload): Json<CreateItem>,
 ) -> Result<Json<ApiItem>, (StatusCode, String)> {
-    let category_id = get_or_create_category_id(&pool, &payload.category)
+    let category_id = get_or_create_category_id(&pool, &payload.category, claims.uid)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
@@ -108,13 +114,14 @@ pub async fn create_item(
     let rank_order: Option<f64> = None;
 
     sqlx::query!(
-        "INSERT INTO items (id, category_id, name, notes, image_url, rank_order) VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT INTO items (id, category_id, name, notes, image_url, rank_order, user_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
         item_id,
         category_id,
         payload.name,
         payload.notes,
         payload.image_url,
-        rank_order
+        rank_order,
+        claims.uid
     )
     .execute(&pool)
     .await
@@ -139,19 +146,19 @@ pub async fn create_item(
 
 pub async fn update_item(
     State(pool): State<SqlitePool>,
+    Extension(claims): Extension<Claims>,
     Path(id): Path<String>,
     Json(payload): Json<UpdateItem>,
 ) -> Result<Json<ApiItem>, (StatusCode, String)> {
-    // Check if item exists first
-    // Check if item exists and get current image_url
-    let existing_item = sqlx::query!("SELECT id, image_url FROM items WHERE id = ?", id)
+    // Check if item exists first AND belongs to user
+    let existing_item = sqlx::query!("SELECT id, image_url FROM items WHERE id = ? AND user_id = ?", id, claims.uid)
         .fetch_optional(&pool)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .ok_or((StatusCode::NOT_FOUND, "Item not found".to_string()))?;
 
     if let Some(cat_name) = &payload.category {
-        let category_id = get_or_create_category_id(&pool, cat_name)
+        let category_id = get_or_create_category_id(&pool, cat_name, claims.uid)
             .await
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
@@ -216,10 +223,11 @@ pub async fn update_item(
 
 pub async fn delete_item(
     State(pool): State<SqlitePool>,
+    Extension(claims): Extension<Claims>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    // Get item first to find image_url
-    let item = sqlx::query!("SELECT image_url FROM items WHERE id = ?", id)
+    // Get item first to find image_url AND check ownership
+    let item = sqlx::query!("SELECT image_url FROM items WHERE id = ? AND user_id = ?", id, claims.uid)
         .fetch_optional(&pool)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
@@ -241,8 +249,9 @@ pub async fn delete_item(
 
 pub async fn get_categories(
     State(pool): State<SqlitePool>,
+    Extension(claims): Extension<Claims>,
 ) -> Result<Json<Vec<String>>, (StatusCode, String)> {
-    let categories = sqlx::query!("SELECT name FROM categories ORDER BY name")
+    let categories = sqlx::query!("SELECT name FROM categories WHERE user_id = ? ORDER BY name", claims.uid)
         .fetch_all(&pool)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;

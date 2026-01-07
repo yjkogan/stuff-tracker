@@ -1,43 +1,86 @@
-import { useNavigate } from 'react-router-dom';
-import { ArrowRight } from 'lucide-react';
+import { useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 export default function Login() {
+    const [username, setUsername] = useState('');
+    const [password, setPassword] = useState('');
+    const [error, setError] = useState('');
     const navigate = useNavigate();
+    const location = useLocation();
 
-    const handleLogin = (e: React.FormEvent) => {
+    const from = location.state?.from?.pathname || '/';
+
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        // Mock login
-        navigate('/');
+        setError('');
+
+        try {
+            const response = await fetch('/api/login', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ username, password }),
+            });
+
+            if (!response.ok) {
+                throw new Error('Invalid credentials');
+            }
+
+            const data = await response.json();
+            localStorage.setItem('token', data.token);
+            navigate(from, { replace: true });
+        } catch (err) {
+            setError('Invalid username or password');
+        }
     };
 
     return (
-        <div className="min-h-screen flex items-center justify-center p-4 bg-gray-50">
-            <div className="w-full max-w-md bg-white rounded-3xl shadow-xl p-8 border border-gray-100">
-                <div className="text-center mb-8">
-                    <h1 className="text-3xl font-bold bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent">
-                        Stuff Tracker
-                    </h1>
-                    <p className="text-gray-500 mt-2">Track your life, one thing at a time.</p>
-                </div>
-
-                <form onSubmit={handleLogin} className="space-y-6">
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Username</label>
+        <div className="flex min-h-screen items-center justify-center bg-gray-100 dark:bg-gray-900">
+            <div className="w-full max-w-md rounded-lg bg-white p-8 shadow-md dark:bg-gray-800">
+                <h2 className="mb-6 text-2xl font-bold text-gray-900 dark:text-white">Sign In</h2>
+                {error && (
+                    <div className="mb-4 rounded bg-red-100 p-3 text-sm text-red-700 dark:bg-red-900 dark:text-red-100">
+                        {error}
+                    </div>
+                )}
+                <form onSubmit={handleSubmit}>
+                    <div className="mb-4">
+                        <label className="mb-2 block text-sm font-bold text-gray-700 dark:text-gray-300" htmlFor="username">
+                            Username
+                        </label>
                         <input
+                            className="focus:shadow-outline w-full appearance-none rounded border px-3 py-2 leading-tight text-gray-700 shadow focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200"
+                            id="username"
                             type="text"
-                            placeholder="Enter your name"
-                            className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-50 outline-none transition-all placeholder:text-gray-300"
-                            required
+                            placeholder="Username"
+                            value={username}
+                            onChange={(e) => setUsername(e.target.value)}
+                            autoComplete="username"
                         />
                     </div>
-
-                    <button
-                        type="submit"
-                        className="w-full py-3.5 bg-indigo-600 text-white rounded-xl font-medium shadow-lg shadow-indigo-200 hover:bg-indigo-700 hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 flex items-center justify-center gap-2 group"
-                    >
-                        <span>Start Tracking</span>
-                        <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                    </button>
+                    <div className="mb-6">
+                        <label className="mb-2 block text-sm font-bold text-gray-700 dark:text-gray-300" htmlFor="password">
+                            Password
+                        </label>
+                        <input
+                            className="focus:shadow-outline w-full appearance-none rounded border px-3 py-2 leading-tight text-gray-700 shadow focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200"
+                            id="password"
+                            type="password"
+                            placeholder="******************"
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            autoComplete="current-password"
+                        />
+                    </div>
+                    <div className="flex items-center justify-between">
+                        <button
+                            className="focus:shadow-outline w-full rounded bg-blue-500 px-4 py-2 font-bold text-white hover:bg-blue-700 focus:outline-none"
+                            type="submit"
+                        >
+                            Sign In
+                        </button>
+                    </div>
                 </form>
             </div>
         </div>

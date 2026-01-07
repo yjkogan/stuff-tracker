@@ -1,6 +1,6 @@
 use server::create_router;
 use sqlx::sqlite::SqlitePoolOptions;
-use std::net::SocketAddr;
+
 use std::path::Path;
 use tokio::fs;
 
@@ -41,9 +41,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let app = create_router(pool);
 
     // Run server
-    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+    let port = std::env::var("PORT").unwrap_or_else(|_| "3000".to_string());
+    let host = std::env::var("HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
+    let addr = format!("{}:{}", host, port);
+    
     println!("listening on {}", addr);
-    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+    let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();
 
     Ok(())

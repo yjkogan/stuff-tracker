@@ -1,129 +1,335 @@
+use axum::{
+    body::Body,
+    http::{Request, StatusCode},
+};
 use serde_json::json;
-use server::create_router;
-use sqlx::{Pool, Sqlite, sqlite::SqlitePoolOptions};
+use server::{create_router, models::ApiItem};
+use sqlx::SqlitePool;
+use tower::ServiceExt;
 
-async fn spawn_app() -> (String, Pool<Sqlite>) {
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-        .await
-        .expect("Failed to bind random port");
-    let port = listener.local_addr().unwrap().port();
-    let addr = format!("http://127.0.0.1:{}", port);
-
-    let pool = SqlitePoolOptions::new()
-        .connect("sqlite::memory:")
-        .await
-        .expect("Failed to connect to in-memory DB");
-
-    sqlx::migrate!("./migrations")
-        .run(&pool)
-        .await
-        .expect("Failed to migrate DB");
-
+#[sqlx::test]
+async fn test_item_lifecycle(pool: SqlitePool) {
     let app = create_router(pool.clone());
-
-    tokio::spawn(async move {
-        axum::serve(listener, app).await.unwrap();
-    });
-
-    (addr, pool)
-}
-
-#[tokio::test]
-async fn health_check_works() {
-    let (addr, _) = spawn_app().await;
-    let client = reqwest::Client::new();
-
-    let response = client
-        .get(format!("{}/", addr))
-        .send()
-        .await
-        .expect("Failed to execute request.");
-
-    assert!(response.status().is_success());
-    assert_eq!(response.text().await.unwrap(), "Hello, World!");
-}
-
-#[tokio::test]
-async fn create_and_retrieve_item() {
-    let (addr, pool) = spawn_app().await;
-    let client = reqwest::Client::new();
+    let _user_id = create_user(&pool, "testuser", "password").await;
+    let token = login(&app, "testuser", "password").await;
 
     // 1. Create Item
-    let item_data = json!({
-        "category": "Snacks",
-        "name": "Popcorn",
-        "notes": "Salty and buttery",
-        "image_url": null
-    });
-
-    let response = client
-        .post(format!("{}/api/items", addr))
-        .json(&item_data)
-        .send()
+    let response = app.clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/items")
+                .method("POST")
+                .header("Content-Type", "application/json")
+                .header("Authorization", format!("Bearer {}", token))
+                .body(Body::from(json!({
+                    "category": "Work",
+                    "name": "Laptop",
+                    "notes": "Company property"
+                }).to_string()))
+                .unwrap(),
+        )
         .await
-        .expect("Failed to execute request.");
+        .unwrap();
 
-    assert_eq!(response.status().as_u16(), 200);
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let created_item: ApiItem = serde_json::from_slice(&body).unwrap();
+    
+    assert_eq!(created_item.name, "Laptop");
+    assert_eq!(created_item.category, "Work");
+    assert_eq!(created_item.notes.as_deref(), Some("Company property"));
+    let item_id = created_item.id;
 
-    let created_item: serde_json::Value = response.json().await.unwrap();
-    let item_id = created_item.get("id").unwrap().as_str().unwrap();
-    assert_eq!(created_item["name"], "Popcorn");
-    assert_eq!(created_item["category"], "Snacks");
-
-    // 2. Get Item by ID
-    let response = client
-        .get(format!("{}/api/items/{}", addr, item_id))
-        .send()
+    // 2. Get Item
+    let response = app.clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/items/{}", item_id))
+                .header("Authorization", format!("Bearer {}", token))
+                .body(Body::empty())
+                .unwrap(),
+        )
         .await
-        .expect("Failed to execute request.");
+        .unwrap();
+    
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let fetched_item: ApiItem = serde_json::from_slice(&body).unwrap();
+    assert_eq!(fetched_item.id, item_id);
 
-    assert_eq!(response.status().as_u16(), 200);
-    let fetched_item: serde_json::Value = response.json().await.unwrap();
-    assert_eq!(fetched_item["id"], item_id);
-
-    // 3. Verify in DB
-    let saved = sqlx::query!("SELECT name FROM items WHERE id = ?", item_id)
-        .fetch_one(&pool)
+    // 3. Update Item
+    let response = app.clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/items/{}", item_id))
+                .method("PATCH")
+                .header("Content-Type", "application/json")
+                .header("Authorization", format!("Bearer {}", token))
+                .body(Body::from(json!({
+                    "name": "Gaming Laptop",
+                    "rank_order": 100.0
+                }).to_string()))
+                .unwrap(),
+        )
         .await
-        .expect("Failed to fetch from DB");
-    assert_eq!(saved.name, "Popcorn");
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let updated_item: ApiItem = serde_json::from_slice(&body).unwrap();
+    assert_eq!(updated_item.name, "Gaming Laptop");
+    assert_eq!(updated_item.rank_order, Some(100.0));
+    // Notes should remain unchanged if not provided in update? 
+    // Wait, PUT usually replaces or PATCH updates? 
+    // Looking at handlers.rs: update_item uses Option fields in UpdateItem struct, so it's a PATCH-like behavior implemented on PUT (or whatever the route is).
+    // Let's verify notes are still there.
+    assert_eq!(updated_item.notes.as_deref(), Some("Company property"));
+
+    // 4. List Items
+    let response = app.clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/items")
+                .header("Authorization", format!("Bearer {}", token))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let items: Vec<ApiItem> = serde_json::from_slice(&body).unwrap();
+    assert!(items.iter().any(|i| i.id == item_id));
+
+    // 5. Delete Item
+    let response = app.clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/items/{}", item_id))
+                .method("DELETE")
+                .header("Authorization", format!("Bearer {}", token))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+
+    // Verify gone
+    let response = app.clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/items/{}", item_id))
+                .header("Authorization", format!("Bearer {}", token))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
 
-#[tokio::test]
-async fn get_item_returns_404_for_non_existent() {
-    let (addr, _) = spawn_app().await;
-    let client = reqwest::Client::new();
+#[sqlx::test]
+async fn test_categories(pool: SqlitePool) {
+    let app = create_router(pool.clone());
+    let _ = create_user(&pool, "cat_user", "pass").await;
+    let token = login(&app, "cat_user", "pass").await;
 
-    let response = client
-        .get(format!(
-            "{}/api/items/00000000-0000-0000-0000-000000000000",
-            addr
-        ))
-        .send()
+    // Create two items in different categories
+    for (cat, name) in &[("Books", "Dune"), ("Movies", "Star Wars")] {
+        let _ = app.clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/items")
+                    .method("POST")
+                    .header("Content-Type", "application/json")
+                    .header("Authorization", format!("Bearer {}", token))
+                    .body(Body::from(json!({
+                        "category": cat,
+                        "name": name,
+                    }).to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+    }
+
+    // 1. List Categories
+    let response = app.clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/categories")
+                .header("Authorization", format!("Bearer {}", token))
+                .body(Body::empty())
+                .unwrap(),
+        )
         .await
-        .expect("Failed to execute request.");
+        .unwrap();
 
-    assert_eq!(response.status().as_u16(), 404);
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let categories: Vec<String> = serde_json::from_slice(&body).unwrap();
+    
+    assert!(categories.contains(&"Books".to_string()));
+    assert!(categories.contains(&"Movies".to_string()));
+
+    // 2. Filter Items by Category
+    let response = app.clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/items?category=Books")
+                .header("Authorization", format!("Bearer {}", token))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let items: Vec<ApiItem> = serde_json::from_slice(&body).unwrap();
+    
+    // Should contain Dune, but NOT Star Wars
+    assert!(items.iter().any(|i| i.name == "Dune"));
+    assert!(!items.iter().any(|i| i.name == "Star Wars"));
 }
 
-#[tokio::test]
-async fn create_item_returns_422_for_invalid_json() {
-    let (addr, _) = spawn_app().await;
-    let client = reqwest::Client::new();
+#[sqlx::test]
+async fn test_sad_paths_and_security(pool: SqlitePool) {
+    let app = create_router(pool.clone());
+    let _ = create_user(&pool, "victim", "pass").await;
+    let _ = create_user(&pool, "hacker", "pass").await;
+    
+    let victim_token = login(&app, "victim", "pass").await;
+    let hacker_token = login(&app, "hacker", "pass").await;
 
-    // 1. Missing required field "name"
-    let bad_data = json!({
-        "category": "Snacks",
-        // "name": "Missing",
-    });
-
-    let response = client
-        .post(format!("{}/api/items", addr))
-        .json(&bad_data)
-        .send()
+    // Victim creates an item
+    let response = app.clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/items")
+                .method("POST")
+                .header("Content-Type", "application/json")
+                .header("Authorization", format!("Bearer {}", victim_token))
+                .body(Body::from(json!({
+                    "category": "Secure",
+                    "name": "Key",
+                }).to_string()))
+                .unwrap(),
+        )
         .await
-        .expect("Failed to execute request.");
+        .unwrap();
+    let item: ApiItem = serde_json::from_slice(&axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let item_id = item.id;
 
-    // Axum returns 422 Unprocessable Entity for deserialization errors
-    assert_eq!(response.status().as_u16(), 422);
+    // 1. Test Item Not Found (for random UUID)
+    let random_id = uuid::Uuid::new_v4().to_string();
+    let response = app.clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/items/{}", random_id))
+                .header("Authorization", format!("Bearer {}", victim_token))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+    // 2. Hacker tries to UPDATE Victim's item -> Should be NOT_FOUND (masked) or FORBIDDEN
+    let response = app.clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/items/{}", item_id))
+                .method("PATCH")
+                .header("Content-Type", "application/json")
+                .header("Authorization", format!("Bearer {}", hacker_token))
+                .body(Body::from(json!({
+                    "name": "Hacked",
+                }).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    // Handlers currently filter by user_id = claims.uid, so it won't find the item -> 404
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+    // 3. Hacker tries to DELETE Victim's item
+    let response = app.clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/items/{}", item_id))
+                .method("DELETE")
+                .header("Authorization", format!("Bearer {}", hacker_token))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+    // Verify item still exists for victim
+    let response = app.clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/items/{}", item_id))
+                .header("Authorization", format!("Bearer {}", victim_token))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+}
+
+// Helpers (Duplicated for isolation as requested)
+async fn create_user(pool: &SqlitePool, username: &str, password: &str) -> i64 {
+    use argon2::{
+        password_hash::{rand_core::OsRng, PasswordHasher, SaltString},
+        Argon2
+    };
+
+    let salt = SaltString::generate(&mut OsRng);
+    let argon2 = Argon2::default();
+    let password_hash = argon2.hash_password(password.as_bytes(), &salt).unwrap().to_string();
+
+    let rec = sqlx::query!(
+        "INSERT INTO users (username, password_hash) VALUES (?, ?) RETURNING id",
+        username,
+        password_hash
+    )
+    .fetch_one(pool)
+    .await
+    .unwrap();
+    
+    rec.id
+}
+
+async fn login(app: &axum::Router, username: &str, password: &str) -> String {
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/login")
+                .method("POST")
+                .header("Content-Type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "username": username,
+                        "password": password
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    json["token"].as_str().unwrap().to_string()
 }

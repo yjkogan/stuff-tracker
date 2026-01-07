@@ -13,7 +13,7 @@ pub struct DbItem {
     pub rank_order: Option<f64>,
 }
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ApiItem {
     pub id: String,
     pub category: String,
@@ -73,4 +73,29 @@ pub struct Category {
     pub id: String,
     pub name: String,
     pub created_at: DateTime<Utc>,
+}
+
+#[derive(Clone, Debug, FromRow, Serialize, Deserialize)]
+pub struct User {
+    pub id: i64,
+    pub username: String,
+    pub password_hash: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct LoginRequest {
+    pub username: String,
+    pub password: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct LoginResponse {
+    pub token: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Claims {
+    pub sub: String,
+    pub uid: i64,
+    pub exp: usize,
 }

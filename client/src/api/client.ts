@@ -25,23 +25,39 @@ function transformItem(item: BackendItem): Item {
     };
 }
 
+async function fetchWithAuth(url: string, options: RequestInit = {}) {
+    const token = localStorage.getItem('token');
+    const headers = {
+        ...options.headers,
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    } as HeadersInit;
+
+    const res = await fetch(url, { ...options, headers });
+    if (res.status === 401) {
+        localStorage.removeItem('token');
+        window.location.href = '/login';
+        throw new Error('Unauthorized');
+    }
+    return res;
+}
+
 export const api = {
     getAllItems: async (): Promise<Item[]> => {
-        const res = await fetch('/api/items');
+        const res = await fetchWithAuth('/api/items');
         if (!res.ok) throw new Error('Failed to fetch items');
         const data: BackendItem[] = await res.json();
         return data.map(transformItem);
     },
 
     getItemsByCategory: async (category: string): Promise<Item[]> => {
-        const res = await fetch(`/api/items?category=${encodeURIComponent(category)}`);
+        const res = await fetchWithAuth(`/api/items?category=${encodeURIComponent(category)}`);
         if (!res.ok) throw new Error('Failed to fetch items by category');
         const data: BackendItem[] = await res.json();
         return data.map(transformItem);
     },
 
     getItem: async (id: string): Promise<Item | undefined> => {
-        const res = await fetch(`/api/items/${id}`);
+        const res = await fetchWithAuth(`/api/items/${id}`);
         if (res.status === 404) return undefined;
         if (!res.ok) throw new Error('Failed to fetch item');
         const data: BackendItem = await res.json();
@@ -55,7 +71,7 @@ export const api = {
             notes: data.notes,
             image_url: data.imageUrl,
         };
-        const res = await fetch('/api/items', {
+        const res = await fetchWithAuth('/api/items', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -74,7 +90,7 @@ export const api = {
             delete payload.imageUrl;
         }
 
-        const res = await fetch(`/api/items/${id}`, {
+        const res = await fetchWithAuth(`/api/items/${id}`, {
             method: 'PATCH',
             headers: {
                 'Content-Type': 'application/json',
@@ -87,13 +103,13 @@ export const api = {
     },
 
     getAllCategories: async (): Promise<string[]> => {
-        const res = await fetch('/api/categories');
+        const res = await fetchWithAuth('/api/categories');
         if (!res.ok) throw new Error('Failed to fetch categories');
         return await res.json();
     },
 
     updateItemRank: async (id: string, rankOrder: number): Promise<void> => {
-        const res = await fetch(`/api/items/${id}`, {
+        const res = await fetchWithAuth(`/api/items/${id}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ rank_order: rankOrder })
@@ -105,7 +121,7 @@ export const api = {
         const formData = new FormData();
         formData.append('image', file);
 
-        const res = await fetch('/api/upload', {
+        const res = await fetchWithAuth('/api/upload', {
             method: 'POST',
             body: formData,
         });
@@ -116,7 +132,7 @@ export const api = {
     },
 
     deleteItem: async (id: string): Promise<void> => {
-        const res = await fetch(`/api/items/${id}`, {
+        const res = await fetchWithAuth(`/api/items/${id}`, {
             method: 'DELETE',
         });
         if (!res.ok) throw new Error('Failed to delete item');

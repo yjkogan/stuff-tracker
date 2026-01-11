@@ -1,0 +1,14 @@
+
+# Client linting
+cd client
+npx lint-staged
+cd ..
+
+# Server check
+if git diff --cached --name-only --diff-filter=ACMR | grep "^server/" > /dev/null; then
+  echo "Server files changed, checking Rust formatting and linting..."
+  cd server
+  cargo fmt -- --check
+  cargo clippy -- -D warnings
+  cd ..
+fi

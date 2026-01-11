@@ -4,9 +4,8 @@ pub mod models;
 pub mod upload;
 
 use axum::{
-    middleware,
+    Router, middleware,
     routing::{get, post},
-    Router,
 };
 use sqlx::SqlitePool;
 use tower_http::services::{ServeDir, ServeFile};
@@ -40,4 +39,3 @@ pub fn create_router(pool: SqlitePool) -> Router {
         .layer(tower_http::cors::CorsLayer::permissive())
         .with_state(pool)
 }
-

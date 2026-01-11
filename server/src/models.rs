@@ -32,11 +32,9 @@ impl From<DbItem> for ApiItem {
         // rank_order 300 -> ~73
         // rank_order -300 -> ~26
         // Scale factor 300.0 chosen to give reasonable spread
-        let score = if let Some(rank) = item.rank_order {
-            Some(100.0 / (1.0 + (-rank / 300.0).exp()))
-        } else {
-            None
-        };
+        let score = item
+            .rank_order
+            .map(|rank| 100.0 / (1.0 + (-rank / 300.0).exp()));
 
         Self {
             id: item.id,

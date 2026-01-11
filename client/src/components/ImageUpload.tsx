@@ -1,291 +1,352 @@
 import { useRef, useState, useEffect } from 'react';
 
 interface ImageUploadProps {
-    value: File | null;
-    onChange: (file: File | null) => void;
-    currentImageUrl?: string | null;
-    onClear?: () => void;
+  value: File | null;
+  onChange: (file: File | null) => void;
+  currentImageUrl?: string | null;
+  onClear?: () => void;
 }
 
 export function ImageUpload({ value, onChange, currentImageUrl, onClear }: ImageUploadProps) {
-    const fileInputRef = useRef<HTMLInputElement>(null);
-    const videoRef = useRef<HTMLVideoElement>(null);
-    const canvasRef = useRef<HTMLCanvasElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
-    const [preview, setPreview] = useState<string | null>(null);
-    const [isCameraOpen, setIsCameraOpen] = useState(false);
-    const [cameraError, setCameraError] = useState<string | null>(null);
-    const [stream, setStream] = useState<MediaStream | null>(null);
-    const [isCompressing, setIsCompressing] = useState(false);
+  const [preview, setPreview] = useState<string | null>(null);
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [stream, setStream] = useState<MediaStream | null>(null);
+  const [isCompressing, setIsCompressing] = useState(false);
 
-    useEffect(() => {
-        if (value) {
-            const url = URL.createObjectURL(value);
-            setPreview(url);
-            return () => URL.revokeObjectURL(url);
-        } else {
-            setPreview(null);
-        }
-    }, [value]);
-
-    // Cleanup stream on unmount
-    useEffect(() => {
-        return () => {
-            if (stream) {
-                stream.getTracks().forEach(track => track.stop());
-            }
-        };
-    }, [stream]);
-
-    const hasImage = !!value || !!currentImageUrl;
-    const displayUrl = value ? preview : currentImageUrl;
-
-    const compressImage = async (file: File): Promise<File> => {
-        return new Promise((resolve, reject) => {
-            const img = new Image();
-            img.src = URL.createObjectURL(file);
-            img.onload = () => {
-                const canvas = document.createElement('canvas');
-                let width = img.width;
-                let height = img.height;
-                const MAX_SIZE = 1280;
-
-                // Simple aspect ratio resize
-                if (width > height) {
-                    if (width > MAX_SIZE) {
-                        height = Math.round(height * (MAX_SIZE / width));
-                        width = MAX_SIZE;
-                    }
-                } else {
-                    if (height > MAX_SIZE) {
-                        width = Math.round(width * (MAX_SIZE / height));
-                        height = MAX_SIZE;
-                    }
-                }
-
-                canvas.width = width;
-                canvas.height = height;
-                const ctx = canvas.getContext('2d');
-                if (!ctx) {
-                    reject(new Error("Could not get canvas context"));
-                    return;
-                }
-
-                ctx.drawImage(img, 0, 0, width, height);
-
-                canvas.toBlob((blob) => {
-                    if (blob) {
-                        const newFile = new File([blob], file.name.replace(/\.[^/.]+$/, ".jpg"), {
-                            type: 'image/jpeg',
-                            lastModified: Date.now(),
-                        });
-                        resolve(newFile);
-                    } else {
-                        reject(new Error("Compression failed"));
-                    }
-                }, 'image/jpeg', 0.8);
-
-                URL.revokeObjectURL(img.src);
-            };
-            img.onerror = (err) => {
-                URL.revokeObjectURL(img.src);
-                reject(err);
-            };
-        });
-    };
-
-    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-
-        setIsCompressing(true);
-        try {
-            const compressedFile = await compressImage(file);
-            onChange(compressedFile);
-        } catch (error) {
-            console.error("Compression failed, using original file", error);
-            onChange(file);
-        } finally {
-            setIsCompressing(false);
-        }
-    };
-
-    const handleClear = (e: React.MouseEvent) => {
-        e.stopPropagation();
-        if (value) {
-            onChange(null);
-        } else if (onClear) {
-            onClear();
-        }
-    };
-
-    const startCamera = async () => {
-        try {
-            setCameraError(null);
-            const mediaStream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: 'environment' }
-            });
-            setStream(mediaStream);
-            setIsCameraOpen(true);
-            setTimeout(() => {
-                if (videoRef.current) {
-                    videoRef.current.srcObject = mediaStream;
-                }
-            }, 0);
-        } catch (err) {
-            console.error("Error accessing camera:", err);
-            setCameraError("Could not access camera. Please check permissions.");
-        }
-    };
-
-    const stopCamera = () => {
-        if (stream) {
-            stream.getTracks().forEach(track => track.stop());
-            setStream(null);
-        }
-        setIsCameraOpen(false);
-        setCameraError(null);
-    };
-
-    const capturePhoto = () => {
-        if (videoRef.current && canvasRef.current) {
-            const video = videoRef.current;
-            const canvas = canvasRef.current;
-
-            // Use the video dimensions
-            let width = video.videoWidth;
-            let height = video.videoHeight;
-            const MAX_SIZE = 1280;
-
-            // Resize logic for camera capture too
-            if (width > height) {
-                if (width > MAX_SIZE) {
-                    height = Math.round(height * (MAX_SIZE / width));
-                    width = MAX_SIZE;
-                }
-            } else {
-                if (height > MAX_SIZE) {
-                    width = Math.round(width * (MAX_SIZE / height));
-                    height = MAX_SIZE;
-                }
-            }
-
-            canvas.width = width;
-            canvas.height = height;
-
-            const ctx = canvas.getContext('2d');
-            if (ctx) {
-                ctx.drawImage(video, 0, 0, width, height);
-                canvas.toBlob((blob) => {
-                    if (blob) {
-                        const file = new File([blob], "camera_capture.jpg", { type: "image/jpeg" });
-                        onChange(file);
-                        stopCamera();
-                    }
-                }, 'image/jpeg', 0.8);
-            }
-        }
-    };
-
-    // If camera is open, show camera UI
-    if (isCameraOpen) {
-        return (
-            <div className="space-y-1">
-                <label className="block text-sm font-medium text-gray-700">Take Photo</label>
-                <div className="relative w-full h-64 bg-black rounded-lg overflow-hidden flex items-center justify-center">
-                    <video
-                        ref={videoRef}
-                        autoPlay
-                        playsInline
-                        className="w-full h-full object-contain"
-                    />
-                    <canvas ref={canvasRef} className="hidden" />
-
-                    <div className="absolute bottom-4 left-0 right-0 flex justify-center gap-4">
-                        <button
-                            type="button"
-                            onClick={stopCamera}
-                            className="bg-white/20 backdrop-blur-sm text-white px-4 py-2 rounded-full hover:bg-white/30 transition-colors"
-                        >
-                            Cancel
-                        </button>
-                        <button
-                            type="button"
-                            onClick={capturePhoto}
-                            className="bg-white text-black p-3 rounded-full hover:bg-gray-200 transition-colors shadow-lg"
-                            title="Take Photo"
-                        >
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" /><circle cx="12" cy="13" r="4" /></svg>
-                        </button>
-                    </div>
-                </div>
-            </div>
-        );
+  useEffect(() => {
+    if (value) {
+      const url = URL.createObjectURL(value);
+      setPreview(url);
+      return () => URL.revokeObjectURL(url);
+    } else {
+      setPreview(null);
     }
+  }, [value]);
 
+  // Cleanup stream on unmount
+  useEffect(() => {
+    return () => {
+      if (stream) {
+        stream.getTracks().forEach((track) => track.stop());
+      }
+    };
+  }, [stream]);
+
+  const hasImage = !!value || !!currentImageUrl;
+  const displayUrl = value ? preview : currentImageUrl;
+
+  const compressImage = async (file: File): Promise<File> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.src = URL.createObjectURL(file);
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+        const MAX_SIZE = 1280;
+
+        // Simple aspect ratio resize
+        if (width > height) {
+          if (width > MAX_SIZE) {
+            height = Math.round(height * (MAX_SIZE / width));
+            width = MAX_SIZE;
+          }
+        } else {
+          if (height > MAX_SIZE) {
+            width = Math.round(width * (MAX_SIZE / height));
+            height = MAX_SIZE;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          reject(new Error('Could not get canvas context'));
+          return;
+        }
+
+        ctx.drawImage(img, 0, 0, width, height);
+
+        canvas.toBlob(
+          (blob) => {
+            if (blob) {
+              const newFile = new File([blob], file.name.replace(/\.[^/.]+$/, '.jpg'), {
+                type: 'image/jpeg',
+                lastModified: Date.now(),
+              });
+              resolve(newFile);
+            } else {
+              reject(new Error('Compression failed'));
+            }
+          },
+          'image/jpeg',
+          0.8,
+        );
+
+        URL.revokeObjectURL(img.src);
+      };
+      img.onerror = (err) => {
+        URL.revokeObjectURL(img.src);
+        reject(err);
+      };
+    });
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsCompressing(true);
+    try {
+      const compressedFile = await compressImage(file);
+      onChange(compressedFile);
+    } catch (error) {
+      console.error('Compression failed, using original file', error);
+      onChange(file);
+    } finally {
+      setIsCompressing(false);
+    }
+  };
+
+  const handleClear = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (value) {
+      onChange(null);
+    } else if (onClear) {
+      onClear();
+    }
+  };
+
+  const startCamera = async () => {
+    try {
+      setCameraError(null);
+      const mediaStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment' },
+      });
+      setStream(mediaStream);
+      setIsCameraOpen(true);
+      setTimeout(() => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = mediaStream;
+        }
+      }, 0);
+    } catch (err) {
+      console.error('Error accessing camera:', err);
+      setCameraError('Could not access camera. Please check permissions.');
+    }
+  };
+
+  const stopCamera = () => {
+    if (stream) {
+      stream.getTracks().forEach((track) => track.stop());
+      setStream(null);
+    }
+    setIsCameraOpen(false);
+    setCameraError(null);
+  };
+
+  const capturePhoto = () => {
+    if (videoRef.current && canvasRef.current) {
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+
+      // Use the video dimensions
+      let width = video.videoWidth;
+      let height = video.videoHeight;
+      const MAX_SIZE = 1280;
+
+      // Resize logic for camera capture too
+      if (width > height) {
+        if (width > MAX_SIZE) {
+          height = Math.round(height * (MAX_SIZE / width));
+          width = MAX_SIZE;
+        }
+      } else {
+        if (height > MAX_SIZE) {
+          width = Math.round(width * (MAX_SIZE / height));
+          height = MAX_SIZE;
+        }
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(video, 0, 0, width, height);
+        canvas.toBlob(
+          (blob) => {
+            if (blob) {
+              const file = new File([blob], 'camera_capture.jpg', { type: 'image/jpeg' });
+              onChange(file);
+              stopCamera();
+            }
+          },
+          'image/jpeg',
+          0.8,
+        );
+      }
+    }
+  };
+
+  // If camera is open, show camera UI
+  if (isCameraOpen) {
     return (
-        <div className="space-y-1">
-            <label className="block text-sm font-medium text-gray-700">
-                Image {isCompressing && <span className="text-gray-400 font-normal text-xs ml-2">(Compressing...)</span>}
-            </label>
+      <div className='space-y-1'>
+        <div className='block text-sm font-medium text-gray-700'>Take Photo</div>
+        <div className='relative flex h-64 w-full items-center justify-center overflow-hidden rounded-lg bg-black'>
+          <video ref={videoRef} autoPlay playsInline className='h-full w-full object-contain'>
+            <track kind='captions' />
+          </video>
+          <canvas ref={canvasRef} className='hidden' />
 
-            <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={handleFileChange}
-            />
-
-            {hasImage && displayUrl ? (
-                <div className="relative w-full h-64 bg-gray-50 rounded-lg border border-gray-200 overflow-hidden group">
-                    <img
-                        src={displayUrl}
-                        alt="Item preview"
-                        className={`w-full h-full object-contain transition-opacity duration-200 ${isCompressing ? 'opacity-50' : 'opacity-100'}`}
-                    />
-                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
-                        <button
-                            type="button"
-                            onClick={handleClear}
-                            disabled={isCompressing}
-                            className="bg-white/90 text-gray-700 p-2 rounded-full shadow-sm hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-0"
-                            title="Remove image"
-                        >
-                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
-                        </button>
-                    </div>
-                </div>
-            ) : (
-                <div className="w-full h-32 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center p-4 gap-3 bg-gray-50/50 hover:bg-gray-50">
-                    {cameraError ? (
-                        <div className="text-red-500 text-sm text-center mb-2">{cameraError}</div>
-                    ) : null}
-
-                    <div className="flex gap-3">
-                        <button
-                            type="button"
-                            onClick={() => fileInputRef.current?.click()}
-                            disabled={isCompressing}
-                            className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg shadow-sm hover:bg-gray-50 hover:border-blue-400 transition-colors text-sm font-medium text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" x2="12" y1="3" y2="15" /></svg>
-                            {isCompressing ? "Processing..." : "Upload File"}
-                        </button>
-                        <span className="text-gray-400 self-center text-sm">or</span>
-                        <button
-                            type="button"
-                            onClick={startCamera}
-                            disabled={isCompressing}
-                            className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg shadow-sm hover:bg-gray-50 hover:border-blue-400 transition-colors text-sm font-medium text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" /><circle cx="12" cy="13" r="4" /></svg>
-                            Take Photo
-                        </button>
-                    </div>
-                    <div className="text-xs text-gray-400 mt-1">Supports drag and drop</div>
-                </div>
-            )}
+          <div className='absolute bottom-4 left-0 right-0 flex justify-center gap-4'>
+            <button
+              type='button'
+              onClick={stopCamera}
+              className='rounded-full bg-white/20 px-4 py-2 text-white backdrop-blur-sm transition-colors hover:bg-white/30'
+            >
+              Cancel
+            </button>
+            <button
+              type='button'
+              onClick={capturePhoto}
+              className='rounded-full bg-white p-3 text-black shadow-lg transition-colors hover:bg-gray-200'
+              title='Take Photo'
+            >
+              <svg
+                xmlns='http://www.w3.org/2000/svg'
+                width='24'
+                height='24'
+                viewBox='0 0 24 24'
+                fill='none'
+                stroke='currentColor'
+                strokeWidth='2'
+                strokeLinecap='round'
+                strokeLinejoin='round'
+              >
+                <path d='M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z' />
+                <circle cx='12' cy='13' r='4' />
+              </svg>
+            </button>
+          </div>
         </div>
+      </div>
     );
+  }
+
+  return (
+    <div className='space-y-1'>
+      <div className='block text-sm font-medium text-gray-700'>
+        Image{' '}
+        {isCompressing && (
+          <span className='ml-2 text-xs font-normal text-gray-400'>(Compressing...)</span>
+        )}
+      </div>
+
+      <input
+        ref={fileInputRef}
+        type='file'
+        accept='image/*'
+        className='hidden'
+        onChange={handleFileChange}
+      />
+
+      {hasImage && displayUrl ? (
+        <div className='group relative h-64 w-full overflow-hidden rounded-lg border border-gray-200 bg-gray-50'>
+          <img
+            src={displayUrl}
+            alt='Item preview'
+            className={`h-full w-full object-contain transition-opacity duration-200 ${isCompressing ? 'opacity-50' : 'opacity-100'}`}
+          />
+          <div className='absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover:bg-black/10'>
+            <button
+              type='button'
+              onClick={handleClear}
+              disabled={isCompressing}
+              className='rounded-full bg-white/90 p-2 text-gray-700 opacity-0 shadow-sm transition-opacity hover:text-red-600 disabled:opacity-0 group-hover:opacity-100'
+              title='Remove image'
+            >
+              <svg
+                xmlns='http://www.w3.org/2000/svg'
+                width='20'
+                height='20'
+                viewBox='0 0 24 24'
+                fill='none'
+                stroke='currentColor'
+                strokeWidth='2'
+                strokeLinecap='round'
+                strokeLinejoin='round'
+              >
+                <path d='M18 6 6 18' />
+                <path d='m6 6 12 12' />
+              </svg>
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className='flex h-32 w-full flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-gray-300 bg-gray-50/50 p-4 hover:bg-gray-50'>
+          {cameraError ? (
+            <div className='mb-2 text-center text-sm text-red-500'>{cameraError}</div>
+          ) : null}
+
+          <div className='flex gap-3'>
+            <button
+              type='button'
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isCompressing}
+              className='flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:border-blue-400 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50'
+            >
+              <svg
+                xmlns='http://www.w3.org/2000/svg'
+                width='16'
+                height='16'
+                viewBox='0 0 24 24'
+                fill='none'
+                stroke='currentColor'
+                strokeWidth='2'
+                strokeLinecap='round'
+                strokeLinejoin='round'
+              >
+                <path d='M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4' />
+                <polyline points='17 8 12 3 7 8' />
+                <line x1='12' x2='12' y1='3' y2='15' />
+              </svg>
+              {isCompressing ? 'Processing...' : 'Upload File'}
+            </button>
+            <span className='self-center text-sm text-gray-400'>or</span>
+            <button
+              type='button'
+              onClick={startCamera}
+              disabled={isCompressing}
+              className='flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:border-blue-400 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50'
+            >
+              <svg
+                xmlns='http://www.w3.org/2000/svg'
+                width='16'
+                height='16'
+                viewBox='0 0 24 24'
+                fill='none'
+                stroke='currentColor'
+                strokeWidth='2'
+                strokeLinecap='round'
+                strokeLinejoin='round'
+              >
+                <path d='M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z' />
+                <circle cx='12' cy='13' r='4' />
+              </svg>
+              Take Photo
+            </button>
+          </div>
+          <div className='mt-1 text-xs text-gray-400'>Supports drag and drop</div>
+        </div>
+      )}
+    </div>
+  );
 }

@@ -1,8 +1,8 @@
-use crate::models::{ApiItem, CreateItem, DbItem, UpdateItem, Claims};
+use crate::models::{ApiItem, Claims, CreateItem, DbItem, UpdateItem};
 use crate::upload::delete_image;
 use axum::{
     Json,
-    extract::{Path, Query, State, Extension},
+    extract::{Extension, Path, Query, State},
     http::StatusCode,
 };
 use serde::Deserialize;
@@ -19,16 +19,16 @@ pub async fn get_items(
     Extension(claims): Extension<Claims>,
     Query(query): Query<ListItemsQuery>,
 ) -> Result<Json<Vec<ApiItem>>, (StatusCode, String)> {
-
     let mut sql = "SELECT i.id, i.name, i.notes, i.image_url, i.created_at, 
                           i.rank_order,
                           c.name as category 
                    FROM items i 
                    JOIN categories c ON i.category_id = c.id
-                   WHERE i.user_id = ?".to_string();
-    
+                   WHERE i.user_id = ?"
+        .to_string();
+
     // We will bind 'claims.uid' first.
-    
+
     if let Some(_cat_name) = &query.category {
         sql.push_str(" AND c.name = ?");
     }
@@ -37,7 +37,7 @@ pub async fn get_items(
 
     let mut query_builder = sqlx::query_as::<_, DbItem>(&sql);
     query_builder = query_builder.bind(claims.uid);
-    
+
     if let Some(cat_name) = query.category {
         query_builder = query_builder.bind(cat_name);
     }
@@ -75,11 +75,19 @@ pub async fn get_item(
     Ok(Json(item.into()))
 }
 
-async fn get_or_create_category_id(pool: &SqlitePool, name: &str, user_id: i64) -> Result<String, sqlx::Error> {
+async fn get_or_create_category_id(
+    pool: &SqlitePool,
+    name: &str,
+    user_id: i64,
+) -> Result<String, sqlx::Error> {
     // Try to find existing for THIS user
-    let rec = sqlx::query!("SELECT id FROM categories WHERE name = ? AND user_id = ?", name, user_id)
-        .fetch_optional(pool)
-        .await?;
+    let rec = sqlx::query!(
+        "SELECT id FROM categories WHERE name = ? AND user_id = ?",
+        name,
+        user_id
+    )
+    .fetch_optional(pool)
+    .await?;
 
     if let Some(row) = rec {
         return Ok(row.id);
@@ -151,11 +159,15 @@ pub async fn update_item(
     Json(payload): Json<UpdateItem>,
 ) -> Result<Json<ApiItem>, (StatusCode, String)> {
     // Check if item exists first AND belongs to user
-    let existing_item = sqlx::query!("SELECT id, image_url FROM items WHERE id = ? AND user_id = ?", id, claims.uid)
-        .fetch_optional(&pool)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, "Item not found".to_string()))?;
+    let existing_item = sqlx::query!(
+        "SELECT id, image_url FROM items WHERE id = ? AND user_id = ?",
+        id,
+        claims.uid
+    )
+    .fetch_optional(&pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+    .ok_or((StatusCode::NOT_FOUND, "Item not found".to_string()))?;
 
     if let Some(cat_name) = &payload.category {
         let category_id = get_or_create_category_id(&pool, cat_name, claims.uid)
@@ -186,10 +198,8 @@ pub async fn update_item(
     }
     if let Some(val) = payload.image_url {
         // If there was an old image and it's different from the new one, delete the old one
-        if let Some(old_url) = existing_item.image_url {
-            if old_url != val {
-                let _ = delete_image(&old_url).await;
-            }
+        if let Some(old_url) = existing_item.image_url.filter(|u| u != &val) {
+            let _ = delete_image(&old_url).await;
         }
 
         sqlx::query!("UPDATE items SET image_url = ? WHERE id = ?", val, id)
@@ -227,11 +237,15 @@ pub async fn delete_item(
     Path(id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, String)> {
     // Get item first to find image_url AND check ownership
-    let item = sqlx::query!("SELECT image_url FROM items WHERE id = ? AND user_id = ?", id, claims.uid)
-        .fetch_optional(&pool)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((StatusCode::NOT_FOUND, "Item not found".to_string()))?;
+    let item = sqlx::query!(
+        "SELECT image_url FROM items WHERE id = ? AND user_id = ?",
+        id,
+        claims.uid
+    )
+    .fetch_optional(&pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+    .ok_or((StatusCode::NOT_FOUND, "Item not found".to_string()))?;
 
     // Delete image if exists
     if let Some(url) = item.image_url {
@@ -251,10 +265,13 @@ pub async fn get_categories(
     State(pool): State<SqlitePool>,
     Extension(claims): Extension<Claims>,
 ) -> Result<Json<Vec<String>>, (StatusCode, String)> {
-    let categories = sqlx::query!("SELECT name FROM categories WHERE user_id = ? ORDER BY name", claims.uid)
-        .fetch_all(&pool)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let categories = sqlx::query!(
+        "SELECT name FROM categories WHERE user_id = ? ORDER BY name",
+        claims.uid
+    )
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     let names = categories.into_iter().map(|rec| rec.name).collect();
     Ok(Json(names))

@@ -1,22 +1,20 @@
+use argon2::{
+    Argon2,
+    password_hash::{PasswordHash, PasswordVerifier},
+};
 use axum::{
-    extract::{State},
-    http::{StatusCode, Request},
-    middleware::Next,
-    response::{Response},
     Json, RequestPartsExt,
+    extract::State,
+    http::{Request, StatusCode},
+    middleware::Next,
+    response::Response,
 };
 use axum_extra::{
-    headers::{authorization::Bearer, Authorization},
     TypedHeader,
+    headers::{Authorization, authorization::Bearer},
 };
-use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
+use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use sqlx::SqlitePool;
-use argon2::{
-    password_hash::{
-        PasswordHash, PasswordVerifier
-    },
-    Argon2
-};
 
 use crate::models::{Claims, LoginRequest, LoginResponse, User};
 
@@ -41,10 +39,17 @@ pub async fn login(
     let user = user.ok_or((StatusCode::UNAUTHORIZED, "Invalid credentials".to_string()))?;
 
     // 2. Verify password
-    let parsed_hash = PasswordHash::new(&user.password_hash)
-        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Invalid hash format".to_string()))?;
+    let parsed_hash = PasswordHash::new(&user.password_hash).map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Invalid hash format".to_string(),
+        )
+    })?;
 
-    if Argon2::default().verify_password(payload.password.as_bytes(), &parsed_hash).is_err() {
+    if Argon2::default()
+        .verify_password(payload.password.as_bytes(), &parsed_hash)
+        .is_err()
+    {
         return Err((StatusCode::UNAUTHORIZED, "Invalid credentials".to_string()));
     }
 

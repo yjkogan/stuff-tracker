@@ -16,6 +16,7 @@ export function ImageUpload({ value, onChange, currentImageUrl, onClear }: Image
     const [isCameraOpen, setIsCameraOpen] = useState(false);
     const [cameraError, setCameraError] = useState<string | null>(null);
     const [stream, setStream] = useState<MediaStream | null>(null);
+    const [isCompressing, setIsCompressing] = useState(false);
 
     useEffect(() => {
         if (value) {
@@ -39,6 +40,76 @@ export function ImageUpload({ value, onChange, currentImageUrl, onClear }: Image
     const hasImage = !!value || !!currentImageUrl;
     const displayUrl = value ? preview : currentImageUrl;
 
+    const compressImage = async (file: File): Promise<File> => {
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.src = URL.createObjectURL(file);
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                let width = img.width;
+                let height = img.height;
+                const MAX_SIZE = 1280;
+
+                // Simple aspect ratio resize
+                if (width > height) {
+                    if (width > MAX_SIZE) {
+                        height = Math.round(height * (MAX_SIZE / width));
+                        width = MAX_SIZE;
+                    }
+                } else {
+                    if (height > MAX_SIZE) {
+                        width = Math.round(width * (MAX_SIZE / height));
+                        height = MAX_SIZE;
+                    }
+                }
+
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                if (!ctx) {
+                    reject(new Error("Could not get canvas context"));
+                    return;
+                }
+
+                ctx.drawImage(img, 0, 0, width, height);
+
+                canvas.toBlob((blob) => {
+                    if (blob) {
+                        const newFile = new File([blob], file.name.replace(/\.[^/.]+$/, ".jpg"), {
+                            type: 'image/jpeg',
+                            lastModified: Date.now(),
+                        });
+                        resolve(newFile);
+                    } else {
+                        reject(new Error("Compression failed"));
+                    }
+                }, 'image/jpeg', 0.8);
+
+                URL.revokeObjectURL(img.src);
+            };
+            img.onerror = (err) => {
+                URL.revokeObjectURL(img.src);
+                reject(err);
+            };
+        });
+    };
+
+    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setIsCompressing(true);
+        try {
+            const compressedFile = await compressImage(file);
+            onChange(compressedFile);
+        } catch (error) {
+            console.error("Compression failed, using original file", error);
+            onChange(file);
+        } finally {
+            setIsCompressing(false);
+        }
+    };
+
     const handleClear = (e: React.MouseEvent) => {
         e.stopPropagation();
         if (value) {
@@ -56,7 +127,6 @@ export function ImageUpload({ value, onChange, currentImageUrl, onClear }: Image
             });
             setStream(mediaStream);
             setIsCameraOpen(true);
-            // Wait for state update and ref
             setTimeout(() => {
                 if (videoRef.current) {
                     videoRef.current.srcObject = mediaStream;
@@ -82,13 +152,30 @@ export function ImageUpload({ value, onChange, currentImageUrl, onClear }: Image
             const video = videoRef.current;
             const canvas = canvasRef.current;
 
-            // Set canvas dimensions to match video
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
+            // Use the video dimensions
+            let width = video.videoWidth;
+            let height = video.videoHeight;
+            const MAX_SIZE = 1280;
+
+            // Resize logic for camera capture too
+            if (width > height) {
+                if (width > MAX_SIZE) {
+                    height = Math.round(height * (MAX_SIZE / width));
+                    width = MAX_SIZE;
+                }
+            } else {
+                if (height > MAX_SIZE) {
+                    width = Math.round(width * (MAX_SIZE / height));
+                    height = MAX_SIZE;
+                }
+            }
+
+            canvas.width = width;
+            canvas.height = height;
 
             const ctx = canvas.getContext('2d');
             if (ctx) {
-                ctx.drawImage(video, 0, 0);
+                ctx.drawImage(video, 0, 0, width, height);
                 canvas.toBlob((blob) => {
                     if (blob) {
                         const file = new File([blob], "camera_capture.jpg", { type: "image/jpeg" });
@@ -138,17 +225,16 @@ export function ImageUpload({ value, onChange, currentImageUrl, onClear }: Image
 
     return (
         <div className="space-y-1">
-            <label className="block text-sm font-medium text-gray-700">Image</label>
+            <label className="block text-sm font-medium text-gray-700">
+                Image {isCompressing && <span className="text-gray-400 font-normal text-xs ml-2">(Compressing...)</span>}
+            </label>
 
             <input
                 ref={fileInputRef}
                 type="file"
                 accept="image/*"
                 className="hidden"
-                onChange={(e) => {
-                    const file = e.target.files?.[0] || null;
-                    onChange(file);
-                }}
+                onChange={handleFileChange}
             />
 
             {hasImage && displayUrl ? (
@@ -156,13 +242,14 @@ export function ImageUpload({ value, onChange, currentImageUrl, onClear }: Image
                     <img
                         src={displayUrl}
                         alt="Item preview"
-                        className="w-full h-full object-contain"
+                        className={`w-full h-full object-contain transition-opacity duration-200 ${isCompressing ? 'opacity-50' : 'opacity-100'}`}
                     />
                     <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
                         <button
                             type="button"
                             onClick={handleClear}
-                            className="bg-white/90 text-gray-700 p-2 rounded-full shadow-sm hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                            disabled={isCompressing}
+                            className="bg-white/90 text-gray-700 p-2 rounded-full shadow-sm hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-0"
                             title="Remove image"
                         >
                             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
@@ -179,16 +266,18 @@ export function ImageUpload({ value, onChange, currentImageUrl, onClear }: Image
                         <button
                             type="button"
                             onClick={() => fileInputRef.current?.click()}
-                            className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg shadow-sm hover:bg-gray-50 hover:border-blue-400 transition-colors text-sm font-medium text-gray-700"
+                            disabled={isCompressing}
+                            className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg shadow-sm hover:bg-gray-50 hover:border-blue-400 transition-colors text-sm font-medium text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" x2="12" y1="3" y2="15" /></svg>
-                            Upload File
+                            {isCompressing ? "Processing..." : "Upload File"}
                         </button>
                         <span className="text-gray-400 self-center text-sm">or</span>
                         <button
                             type="button"
                             onClick={startCamera}
-                            className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg shadow-sm hover:bg-gray-50 hover:border-blue-400 transition-colors text-sm font-medium text-gray-700"
+                            disabled={isCompressing}
+                            className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg shadow-sm hover:bg-gray-50 hover:border-blue-400 transition-colors text-sm font-medium text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" /><circle cx="12" cy="13" r="4" /></svg>
                             Take Photo

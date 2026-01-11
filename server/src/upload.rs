@@ -21,13 +21,17 @@ pub async fn upload_image(
         
         if name == "image" {
              let file_name = field.file_name().unwrap_or("image.jpg").to_string();
-             let ext = Path::new(&file_name).extension().and_then(|e| e.to_str()).unwrap_or("jpg");
-             let new_filename = format!("{}.{}", Uuid::new_v4(), ext);
+             // Just force .jpg extension since we are converting everything to jpeg effectively
+             let new_filename = format!("{}.jpg", Uuid::new_v4());
              let filepath = format!("uploads/{}", new_filename);
 
              let data = field.bytes().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-             fs::write(&filepath, data).await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+             // Strip metadata by decoding and re-encoding
+             let img = image::load_from_memory(&data).map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid image format: {}", e)))?;
+             
+             // Save as JPEG with default quality
+             img.save(&filepath).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to save image: {}", e)))?;
 
              return Ok(Json(UploadResponse {
                  url: format!("/uploads/{}", new_filename),

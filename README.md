@@ -9,6 +9,31 @@
 - [ ] Way to delete all items in a category
 - [ ] CI / CD
 
+
+## Development
+
+To easily run both the frontend (Vite) and backend (Rust) locally:
+
+```bash
+./dev.sh
+```
+
+
+This script will:
+1.  Start the Rust backend on `http://localhost:3000`.
+2.  Start the Vite frontend on `http://localhost:5173` (proxying API requests to the backend).
+
+### Connecting to Production
+
+To run the frontend locally but connect to a live backend (e.g. production):
+
+```bash
+./dev.sh --target http://YOUR_PROD_IP
+```
+
+This will **skip** starting the local Rust server and instead proxy API requests to the specified URL.
+
+
 ## Infrastructure & Deployment
 
 This project is deployed to a Google Cloud Platform (GCP) VM (Ubuntu) using a rigorous shell script.

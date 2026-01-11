@@ -1,6 +1,7 @@
 # Rust
 /target
 /target/
+/target-linux/
 **/*.rs.bk
 
 # Database

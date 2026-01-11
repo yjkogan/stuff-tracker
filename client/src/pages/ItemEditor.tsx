@@ -18,9 +18,9 @@ export default function ItemEditor() {
     const [categories, setCategories] = useState<string[]>([]);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
-    // Logic for Ranking Integration
     const [rankingItem, setRankingItem] = useState<Item | null>(null);
     const [currentItem, setCurrentItem] = useState<Item | null>(null);
+    const [error, setError] = useState<string | null>(null);
 
     const [formData, setFormData] = useState({
         name: '',
@@ -58,6 +58,7 @@ export default function ItemEditor() {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setSaving(true);
+        setError(null);
         try {
             let finalImageUrl = formData.imageUrl;
 
@@ -76,8 +77,9 @@ export default function ItemEditor() {
                 await api.updateItem(id, payload);
                 navigate(`/category/${encodeURIComponent(formData.category)}`);
             }
-        } catch (err) {
+        } catch (err: any) {
             console.error(err);
+            setError(err.message || 'Failed to save item');
         } finally {
             setSaving(false);
         }
@@ -122,6 +124,12 @@ export default function ItemEditor() {
         <div className="space-y-6">
             <h2 className="text-2xl font-bold text-gray-900">{isNew ? 'New Entry' : 'Edit Entry'}</h2>
 
+            {error && (
+                <div className="p-4 bg-red-50 text-red-700 border border-red-200 rounded-xl">
+                    {error}
+                </div>
+            )}
+
             <form onSubmit={handleSubmit} className="space-y-6">
 
                 <div className="space-y-4">
@@ -130,8 +138,8 @@ export default function ItemEditor() {
                             <label className="block text-sm font-medium text-gray-700">Category</label>
                             {formData.category && (
                                 <span className={`text-xs font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${categories.some(c => c.toLowerCase() === formData.category.toLowerCase())
-                                        ? 'bg-green-100 text-green-700'
-                                        : 'bg-indigo-100 text-indigo-700'
+                                    ? 'bg-green-100 text-green-700'
+                                    : 'bg-indigo-100 text-indigo-700'
                                     }`}>
                                     {categories.some(c => c.toLowerCase() === formData.category.toLowerCase())
                                         ? 'Existing'

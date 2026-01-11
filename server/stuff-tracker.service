@@ -5,8 +5,8 @@ After=network.target
 [Service]
 Type=simple
 User=ubuntu
-WorkingDirectory=/home/ubuntu/app
-ExecStart=/home/ubuntu/app/server
+WorkingDirectory=/var/www/stuff-tracker
+ExecStart=/var/www/stuff-tracker/server
 Restart=always
 RestartSec=3
 Environment=RUST_LOG=info
@@ -14,7 +14,7 @@ Environment=DATABASE_URL=sqlite:data.db
 Environment=PORT=3000
 Environment=HOST=127.0.0.1
 # Ensure uploads directory exists and is writable
-ExecStartPre=/bin/mkdir -p /home/ubuntu/app/uploads
+ExecStartPre=/bin/mkdir -p /var/www/stuff-tracker/uploads
 
 [Install]
 WantedBy=multi-user.target

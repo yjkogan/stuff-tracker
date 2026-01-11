@@ -38,6 +38,30 @@ async function fetchWithAuth(url: string, options: RequestInit = {}) {
         window.location.href = '/login';
         throw new Error('Unauthorized');
     }
+
+    if (!res.ok) {
+        let errorMessage = 'An error occurred';
+        try {
+            // Try to parse as text first, could be JSON or plain text
+            const errorBody = await res.text();
+            // Try to see if it's JSON
+            try {
+                const jsonError = JSON.parse(errorBody);
+                // If the backend sends { error: "message" } or similar
+                if (jsonError.error) errorMessage = jsonError.error;
+                else if (jsonError.message) errorMessage = jsonError.message;
+                else errorMessage = errorBody;
+            } catch {
+                // Not JSON, use text if not empty
+                if (errorBody) errorMessage = errorBody;
+                else errorMessage = res.statusText;
+            }
+        } catch {
+            errorMessage = res.statusText;
+        }
+        throw new Error(errorMessage);
+    }
+
     return res;
 }
 
